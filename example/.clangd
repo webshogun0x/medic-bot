@@ -1,0 +1,21 @@
+CompileFlags:
+  Add:
+    - -I/home/web_shogun/esp/esp-idf/components/lvgl/lvgl/src
+    - -I/home/web_shogun/esp/esp-idf/components/lvgl/lvgl/src/core
+    - -I/home/web_shogun/esp/esp-idf/components/lvgl/lvgl/src/widgets
+    - -I/home/web_shogun/esp/esp-idf/components/lvgl/lvgl/src/draw
+    - -I/home/web_shogun/esp/esp-idf/components/lvgl/lvgl/src/font
+    - -I/home/web_shogun/esp/esp-idf/components/lvgl/lvgl/src/misc
+    - -I/home/web_shogun/esp/esp-idf/components/esp_wifi/include
+    - -I/home/web_shogun/esp/esp-idf/components/esp_now/include
+    - -I/home/web_shogun/esp/esp-idf/components/esp_common/include
+    - -I/home/web_shogun/esp/esp-idf/components/freertos/FreeRTOS-Kernel/include
+    - -I/home/web_shogun/esp/esp-idf/components/freertos/esp_additions/include
+    - -I./main
+    - -DLV_CONF_INCLUDE_SIMPLE
+    - -DESP_PLATFORM
+  Remove:
+    - -mlongcalls
+    - -mdisable-hardware-atomics
+    - -fstrict-volatile-bitfields
+    - -fno-tree-switch-conversion
