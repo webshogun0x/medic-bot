@@ -48,6 +48,12 @@ void voicePlayTrack(VoiceTrack track);
 // Play track without waiting (non-blocking for setup)
 void voicePlayTrackNoWait(VoiceTrack track);
 
+// Check if a track is currently playing
+bool voiceIsPlaying();
+
+// Stop current track
+void voiceStop();
+
 // Get current track number
 uint8_t voiceGetCurrentTrack();
 
