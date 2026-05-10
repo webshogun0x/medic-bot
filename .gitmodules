@@ -1,3 +1,6 @@
 [submodule "medicBot_webApp"]
 	path = medicBot_webApp
 	url = git@github.com:webshogun0x/medicBot_webApp.git
+[submodule "medic-bot_webApp"]
+	path = medic-bot_webApp
+	url = git@github.com:webshogun0x/medic-bot_webApp
