@@ -76,9 +76,6 @@ void initWiFi() {
   WiFi.mode(WIFI_STA);
   Serial.println(F("Initializing WiFi..."));
   
-  // Play WiFi connecting voice (non-blocking so we can start connecting)
-  voicePlayTrackNoWait(VOICE_WIFI_CONNECTING);
-  
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
   
   unsigned long wifiConnectTimeout = millis();
@@ -102,8 +99,6 @@ void initWiFi() {
     displaySerial.print(buf);
   } else {
     Serial.println(F("\nWiFi connection failed!"));
-    voiceStop(); // Stop current track if it's still playing
-    voicePlayTrack(VOICE_ERROR_WIFI_FAILED);  // Blocking error
     displaySerial.print(F("{\"type\":\"SYSTEM_STATUS\",\"message\":\"WiFi connection failed\",\"wifi_connected\":false,\"ip\":\"0.0.0.0\"}\n"));
   }
 }
@@ -156,12 +151,6 @@ void initFirebase() {
   
   signupOK = (auth.token.uid != "");
   Serial.println(signupOK ? F("Firebase OK") : F("Firebase timeout"));
-  
-  if (signupOK) {
-    // Wait for WiFi connecting voice to finish or near finish before playing Ready
-    while (voiceIsPlaying()) delay(100); 
-    voicePlayTrackNoWait(VOICE_SYSTEM_READY);
-  }
   
   char buf[128];
   snprintf(buf, sizeof(buf), "{\"type\":\"SYSTEM_STATUS\",\"message\":\"Firebase %s\",\"firebase_connected\":%s,\"ready\":%s}\n", 
@@ -289,7 +278,6 @@ uint8_t rfidToFingerprintID(String rfidNumber) {
 void enrollmentProcess() {
   ensureWiFiConnected();
   Serial.println("=== ENROLLMENT ===");
-  voicePlayTrackNoWait(VOICE_ENROLL_SCAN_RFID);
   sendPrompt("Please scan your RFID card");
   
   tidString = "NIL";
@@ -303,11 +291,9 @@ void enrollmentProcess() {
     return;
   }
   
-  voicePlayTrackNoWait(VOICE_ENROLL_RFID_DETECTED);
   currentUser = fetchUserData(tidString);
   
   if (currentUser.name == "" || strcmp(currentUser.name, "Unknown") == 0) {
-    voicePlayTrackNoWait(VOICE_ERROR_USER_NOT_FOUND);
     sendPrompt("ERROR: RFID not registered!");
     return;
   }
@@ -316,7 +302,6 @@ void enrollmentProcess() {
   id = fingerprintID;
   
   if (getFingerprintEnroll()) {
-    voicePlayTrackNoWait(VOICE_ENROLL_SUCCESS);
     sendPrompt("SUCCESS: Enrollment complete!");
     updateFingerprintStatus(tidString, true, fingerprintID);
     
@@ -324,10 +309,8 @@ void enrollmentProcess() {
     previousState = currentState;
     currentState = STATE_DASHBOARD;
     delay(2000);
-    voicePlayTrackNoWait(VOICE_DASHBOARD_INSTRUCTIONS);
     sendUserData();
   } else {
-    voicePlayTrackNoWait(VOICE_ENROLL_FAILED);
     sendPrompt("FAILED: Enrollment unsuccessful");
   }
 }
@@ -335,7 +318,6 @@ void enrollmentProcess() {
 void loginProcess() {
   ensureWiFiConnected();
   Serial.println("=== LOGIN ===");
-  voicePlayTrackNoWait(VOICE_LOGIN_SCAN_RFID);
   sendPrompt("Please scan your RFID card...");
   
   tidString = "NIL";
@@ -349,16 +331,13 @@ void loginProcess() {
     return;
   }
   
-  voicePlayTrackNoWait(VOICE_LOGIN_RFID_DETECTED);
   currentUser = fetchUserData(tidString);
   
   if (currentUser.name == "" || strcmp(currentUser.name, "Unknown") == 0) {
-    voicePlayTrackNoWait(VOICE_ERROR_USER_NOT_FOUND);
     sendPrompt("ERROR: User not found!");
     return;
   }
   
-  voicePlayTrackNoWait(VOICE_LOGIN_FINGERPRINT_SCANNING);
   delay(1000);
   
   uint8_t expectedID = getFingerprintIDFromFirebase(tidString);
@@ -372,13 +351,10 @@ void loginProcess() {
     currentUser.isLoggedIn = true;
     previousState = currentState;
     currentState = STATE_DASHBOARD;
-    voicePlayTrackNoWait(VOICE_LOGIN_SUCCESS);
     sendSimpleMessage("FINGERPRINT_SUCCESS", "Verified");
     delay(2000);
-    voicePlayTrackNoWait(VOICE_DASHBOARD_INSTRUCTIONS);
     sendUserData();
   } else {
-    voicePlayTrackNoWait(VOICE_LOGIN_FAILED);
     sendSimpleMessage("FINGERPRINT_ERROR", "Verification failed");
   }
 }
@@ -394,8 +370,8 @@ void writeFirebaseDB() {
   reading.temperature = user_tempo;
   reading.weight = user_weight;
   reading.height = user_height_laser;
-  reading.bmi_laser = user_bmi_laser;
   reading.bmi_sonar = user_bmi_sonar;
+  reading.bmi_laser = user_bmi_laser;
   reading.systolic = user_systolic;
   reading.diastolic = user_diastolic;
   reading.synced_to_firebase = false;
@@ -412,7 +388,7 @@ void writeFirebaseDB() {
     success &= Firebase.RTDB.setFloat(&fbdo, userPath + "/temperature", user_tempo);
     success &= Firebase.RTDB.setFloat(&fbdo, userPath + "/weight", user_weight);
     success &= Firebase.RTDB.setFloat(&fbdo, userPath + "/height", user_height_laser);
-    success &= Firebase.RTDB.setFloat(&fbdo, userPath + "/bmi_laser", user_bmi_laser);
+    success &= Firebase.RTDB.setFloat(&fbdo, userPath + "/bmi", user_bmi_laser);
     success &= Firebase.RTDB.setString(&fbdo, userPath + "/timestamp", timestamp);
     
     if (success) markReadingAsSynced(currentUser.rfid, reading.timestamp);
@@ -460,19 +436,14 @@ void handleDisplayCommands() {
               enrollmentProcess();
             }
         } else if (strcmp(cmdBuf, "READ_OXIMETER") == 0) {
-            voicePlayTrackNoWait(VOICE_MEASUREMENT_STEP_ON_SCALE);
-            voicePlayTrackNoWait(VOICE_PLACE_FINGER_OXIMETER);
             readOximeter();
             readESPNowData();
-            voicePlayTrackNoWait(VOICE_MEASUREMENTS_COMPLETE);
             sendSensorData();
         } else if (strncmp(cmdBuf, "SAVE_READINGS", 13) == 0) {
             writeFirebaseDB();
-            voicePlayTrackNoWait(VOICE_SAVE_SUCCESS);
         } else if (strcmp(cmdBuf, "LOGOUT") == 0) {
             currentState = STATE_IDLE;
             currentUser.isLoggedIn = false;
-            voicePlayTrackNoWait(VOICE_LOGOUT);
         }
       }
     } else if (idx < sizeof(cmdBuf) - 1) {
@@ -489,9 +460,16 @@ void setup() {
   delay(1000);
   Serial.println("...Starting Medic-Bot");
   
+  // 1. Initialize voice guidance first
   voiceInit();
-  voicePlayTrack(VOICE_WELCOME);
   
+  // 2. Play medibot_init (Track 1) and wait for it
+  voicePlayTrack(VOICE_INIT);
+  
+  // 3. Play system_instruc (Track 2) NON-BLOCKING
+  voicePlayTrackNoWait(VOICE_SYSTEM_INSTRUC);
+  
+  // 4. Perform initializations while system_instruc is playing
   initSDCard();
   initDatabase();
   
@@ -505,7 +483,7 @@ void setup() {
   initOximeter();
   initFirebase();
   
-  // FLUSH SERIAL BUFFER before starting the loop to avoid stale/noisy commands
+  // FLUSH SERIAL BUFFER
   while(displaySerial.available()) displaySerial.read();
   
   Serial.println("System ready");
@@ -517,7 +495,6 @@ void loop() {
   static unsigned long lastSyncCheck = 0;
   if (millis() - lastSyncCheck > 60000) {
     lastSyncCheck = millis();
-    // sync logic here if needed
   }
   delay(100);
 }

@@ -1,17 +1,22 @@
-#include "pins_arduino.h"
-#include <iterator>
-#include "esp32-hal-spi.h"
-#include <rfid_module.h>
+#include <SPI.h>
+#include <MFRC522.h>
+#include "rfid_module.h"
+#include "config.h"
 
-MFRC522 rfid(SS_PIN, RST_PIN);
+// Use SPI2 (FSPI) for RFID
+SPIClass spiRFID(FSPI);
+MFRC522 rfid(RFID_CS_PIN, RFID_RST_PIN);
 MFRC522::MIFARE_Key key;
-byte nuidPICC[4];
 String tidString = "NIL";
 
 void initRFID() {
-  Serial.println("Initializing RFID...");
-  SPI.begin(CLK_PIN, MISO_PIN, MOSI_PIN, SS_PIN);
-  rfid.PCD_Init();
+  Serial.println("Initializing RFID (SPI2)...");
+  
+  // Initialize SPI2 with RFID pins
+  spiRFID.begin(RFID_SCK_PIN, RFID_MISO_PIN, RFID_MOSI_PIN, RFID_CS_PIN);
+  
+  // Initialize MFRC522 with custom SPI bus
+  rfid.PCD_Init(&spiRFID);
   
   // Check if RFID module is responding
   byte version = rfid.PCD_ReadRegister(rfid.VersionReg);
@@ -20,7 +25,6 @@ void initRFID() {
   
   if (version == 0x00 || version == 0xFF) {
     Serial.println("WARNING: RFID module not detected! Check wiring.");
-    Serial.println("Expected version: 0x91 or 0x92");
     Serial.println("Continuing without RFID...");
     return;
   }
@@ -29,7 +33,7 @@ void initRFID() {
     key.keyByte[i] = 0xFF;
   }
   
-  Serial.println("RFID initialized successfully");
+  Serial.println("RFID initialized successfully on SPI2");
 }
 
 void readRFID() {
@@ -37,10 +41,7 @@ void readRFID() {
     return;
   }
   
-  Serial.println("Card detected!");
-  
   if (!rfid.PICC_ReadCardSerial()) {
-    Serial.println("Failed to read card serial");
     return;
   }
 
@@ -56,5 +57,4 @@ void readRFID() {
 
   rfid.PICC_HaltA();
   rfid.PCD_StopCrypto1();
-  delay(500);
 }

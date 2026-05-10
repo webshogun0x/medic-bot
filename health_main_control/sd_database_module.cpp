@@ -1,6 +1,11 @@
 #include "sd_database_module.h"
 #include <time.h>
+#include <SPI.h>
+#include <SD.h>
+#include "config.h"
 
+// Use SPI3 (HSPI) for SD Card
+SPIClass spiSD(HSPI);
 static sqlite3 *db = NULL;
 static bool sd_initialized = false;
 static bool db_initialized = false;
@@ -29,11 +34,12 @@ static bool executeSQL(const char* sql) {
 }
 
 bool initSDCard() {
-  Serial.println("Initializing SD card...");
+  Serial.println("Initializing SD card (SPI3)...");
   
-  SPI.begin(SD_SCK_PIN, SD_MISO_PIN, SD_MOSI_PIN, SD_CS_PIN);
+  // Initialize SPI3 with SD card pins
+  spiSD.begin(SD_SCK_PIN, SD_MISO_PIN, SD_MOSI_PIN, SD_CS_PIN);
   
-  if (!SD.begin(SD_CS_PIN)) {
+  if (!SD.begin(SD_CS_PIN, spiSD)) {
     Serial.println("SD Card initialization failed!");
     return false;
   }
@@ -102,7 +108,7 @@ bool initDatabase() {
     return false;
   }
   
-  // Create HEALTH_READINGS table
+  // Create HEALTH_READINGS table with both sonar and laser BMI
   const char* createReadingsTable = 
     "CREATE TABLE IF NOT EXISTS health_readings ("
     "id INTEGER PRIMARY KEY AUTOINCREMENT,"
@@ -283,8 +289,8 @@ bool saveHealthReading(const HealthReading& reading) {
   char sql[1024];
   snprintf(sql, sizeof(sql),
     "INSERT INTO health_readings "
-    "(rfid, timestamp, heart_rate, spo2, temperature, weight, height, bmi, systolic, diastolic, synced_to_firebase) "
-    "VALUES ('%s', '%s', %.2f, %.2f, %.2f, %.2f, %.2f, %.2f, %d, %d, %d);",
+    "(rfid, timestamp, heart_rate, spo2, temperature, weight, height, bmi_sonar, bmi_laser, systolic, diastolic, synced_to_firebase) "
+    "VALUES ('%s', '%s', %.2f, %.2f, %.2f, %.2f, %.2f, %.2f, %.2f, %d, %d, %d);",
     reading.rfid.c_str(), reading.timestamp.c_str(),
     reading.heart_rate, reading.spo2, reading.temperature,
     reading.weight, reading.height, reading.bmi_sonar, reading.bmi_laser,
@@ -414,7 +420,7 @@ bool getUserHealthStats(const String& rfid, float& avgHR, float& avgSpO2, float&
   
   char sql[256];
   snprintf(sql, sizeof(sql),
-    "SELECT AVG(heart_rate), AVG(spo2), AVG(bmi), COUNT(*) FROM health_readings WHERE rfid='%s';",
+    "SELECT AVG(heart_rate), AVG(spo2), AVG(bmi_laser), COUNT(*) FROM health_readings WHERE rfid='%s';",
     rfid.c_str());
   
   sqlite3_stmt *stmt;
@@ -513,12 +519,12 @@ bool exportToCSV(const String& rfid, const String& csvPath) {
   }
   
   // Write CSV header
-  csvFile.println("Timestamp,Heart Rate,SpO2,Temperature,Weight,Height,BMI,Systolic,Diastolic");
+  csvFile.println("Timestamp,Heart Rate,SpO2,Temperature,Weight,Height,BMI Sonar,BMI Laser,Systolic,Diastolic");
   
   // Query readings
   char sql[256];
   snprintf(sql, sizeof(sql),
-    "SELECT timestamp, heart_rate, spo2, temperature, weight, height, bmi, systolic, diastolic "
+    "SELECT timestamp, heart_rate, spo2, temperature, weight, height, bmi_sonar, bmi_laser, systolic, diastolic "
     "FROM health_readings WHERE rfid='%s' ORDER BY timestamp;",
     rfid.c_str());
   
@@ -531,7 +537,7 @@ bool exportToCSV(const String& rfid, const String& csvPath) {
   }
   
   while (sqlite3_step(stmt) == SQLITE_ROW) {
-    csvFile.printf("%s,%.1f,%.1f,%.1f,%.1f,%.2f,%.1f,%d,%d\n",
+    csvFile.printf("%s,%.1f,%.1f,%.1f,%.1f,%.2f,%.1f,%.1f,%d,%d\n",
       (const char*)sqlite3_column_text(stmt, 0),
       sqlite3_column_double(stmt, 1),
       sqlite3_column_double(stmt, 2),
@@ -539,8 +545,9 @@ bool exportToCSV(const String& rfid, const String& csvPath) {
       sqlite3_column_double(stmt, 4),
       sqlite3_column_double(stmt, 5),
       sqlite3_column_double(stmt, 6),
-      sqlite3_column_int(stmt, 7),
-      sqlite3_column_int(stmt, 8));
+      sqlite3_column_double(stmt, 7),
+      sqlite3_column_int(stmt, 8),
+      sqlite3_column_int(stmt, 9));
   }
   
   sqlite3_finalize(stmt);

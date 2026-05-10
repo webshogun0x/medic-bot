@@ -2,7 +2,7 @@
 #include "config.h"
 
 static uint8_t currentTrack = 1;
-static const uint8_t TOTAL_TRACKS = 26;
+static const uint8_t TOTAL_TRACKS = 2;
 static bool isAtTrackStart = true;
 static volatile unsigned long trackStartTime = 0;
 static volatile bool isTrackPlaying = false;
