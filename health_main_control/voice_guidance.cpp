@@ -23,7 +23,15 @@ void voiceBackgroundTask(void *pvParameters) {
         voicePressPlayPause();
         isTrackPlaying = false;
         isAtTrackStart = false; // Now near the end
-        Serial.println(F("Voice Guidance: Track auto-paused at 9.5s"));
+        
+        // If this was the system instructions (track 2), power down the module to prevent looping
+        if (currentTrack == 2) {
+          delay(200); 
+          voicePowerDown();
+          Serial.println(F("Voice Guidance: Final track finished, powering down module."));
+        } else {
+          Serial.println(F("Voice Guidance: Track auto-paused at 9.5s"));
+        }
       }
     }
     vTaskDelay(pdMS_TO_TICKS(50));
@@ -79,6 +87,13 @@ void voiceStop() {
   }
 }
 
+void voicePowerDown() {
+  digitalWrite(VOICE_RESET_PIN, HIGH); // Assert reset/off state
+  isTrackPlaying = false;
+  isAtTrackStart = false;
+  Serial.println(F("Voice Guidance: Powered down until system restart"));
+}
+
 void voiceStartTrack(VoiceTrack track) {
   uint8_t targetTrack = (uint8_t)track;
   
@@ -86,6 +101,9 @@ void voiceStartTrack(VoiceTrack track) {
     Serial.println(F("Voice Guidance: Invalid track number"));
     return;
   }
+
+  // Ensure module is powered up/not in reset
+  digitalWrite(VOICE_RESET_PIN, LOW);
 
   // If already playing, stop it first
   if (isTrackPlaying) {

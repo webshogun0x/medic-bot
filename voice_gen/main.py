@@ -4,7 +4,7 @@ from pydub import AudioSegment
 import os
 
 async def create_medibot_audio(target_seconds: int = 35, output_path: str = "medibot_init.mp3"):
-    text = "Scanning fingerprint. Please keep your finger steady on the sensor."
+    text = "System initialization done. Please listen to the usage instructions carefully. To Login you will need to place your RFID card on the scanner and wait then you will place you finger on the fingerprint scanner for verification.To Enrol, this should be after you register on the web app and issued an RFID card, scan your card then follow the instructions to register your fingerprint. At the Dashboard, and Analytics screen. To take your SPO2 and Heart Rate place your finger on the sensor beside the fingerprint scanner then click read then save on the analytics screen, to read you BMI you will mount the machine wait for it to adjust to your height and stay still for 5 seconds to maintain your balance then click read then save on the analytics screen. Then Step down. To measure your Diastolic and Systolic Blood Pressure you will need to place your arm on the black cuff and wait for the reading to be done, the reading on the meter will have to be typed in the analytics screen then click save. To verify if you measurements is taken sucessfully login to the web app it will be automatically updated. For any questions please ask the staff for assistance. Thank you for using Medibot."
 
     
     # 1. Generate TTS with slightly slower rate for a calm, professional tone

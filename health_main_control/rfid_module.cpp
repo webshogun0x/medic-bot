@@ -3,28 +3,39 @@
 #include "rfid_module.h"
 #include "config.h"
 
-// Use SPI2 (FSPI) for RFID
-SPIClass spiRFID(FSPI);
 MFRC522 rfid(RFID_CS_PIN, RFID_RST_PIN);
 MFRC522::MIFARE_Key key;
 String tidString = "NIL";
 
 void initRFID() {
-  Serial.println("Initializing RFID (SPI2)...");
+  Serial.println("Initializing RFID (Hardware SPI2)...");
   
-  // Initialize SPI2 with RFID pins
-  spiRFID.begin(RFID_SCK_PIN, RFID_MISO_PIN, RFID_MOSI_PIN, RFID_CS_PIN);
+  // 1. Explicitly set up control pins to known states
+  pinMode(RFID_RST_PIN, OUTPUT);
+  pinMode(RFID_CS_PIN, OUTPUT);
+  digitalWrite(RFID_CS_PIN, HIGH); // De-select
   
-  // Initialize MFRC522 with custom SPI bus
-  rfid.PCD_Init(&spiRFID);
+  // 2. Perform manual hardware reset pulse
+  digitalWrite(RFID_RST_PIN, LOW);
+  delay(100);
+  digitalWrite(RFID_RST_PIN, HIGH);
+  delay(100);
   
-  // Check if RFID module is responding
+  // 3. Initialize default SPI bus (SPI2/FSPI) with RFID pins
+  // We pass -1 for CS so the MFRC522 library can manage it manually via GPIO
+  SPI.begin(RFID_SCK_PIN, RFID_MISO_PIN, RFID_MOSI_PIN, -1);
+  
+  // 4. Initialize MFRC522
+  rfid.PCD_Init();
+  
+  // 5. Check if RFID module is responding
   byte version = rfid.PCD_ReadRegister(rfid.VersionReg);
   Serial.print("MFRC522 Version: 0x");
   Serial.println(version, HEX);
   
   if (version == 0x00 || version == 0xFF) {
     Serial.println("WARNING: RFID module not detected! Check wiring.");
+    Serial.println("Expected version: 0x91 or 0x92");
     Serial.println("Continuing without RFID...");
     return;
   }
@@ -33,7 +44,7 @@ void initRFID() {
     key.keyByte[i] = 0xFF;
   }
   
-  Serial.println("RFID initialized successfully on SPI2");
+  Serial.println("RFID initialized successfully on Hardware SPI2");
 }
 
 void readRFID() {

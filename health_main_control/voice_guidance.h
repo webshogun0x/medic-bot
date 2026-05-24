@@ -30,6 +30,9 @@ bool voiceIsPlaying();
 // Stop current track
 void voiceStop();
 
+// Power down/Disable MP3 player until restart
+void voicePowerDown();
+
 // Get current track number
 uint8_t voiceGetCurrentTrack();
 
