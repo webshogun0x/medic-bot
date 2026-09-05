@@ -1,6 +1,38 @@
+# Build & Binary Artifacts
+build/
+.pio/
+*.bin
+*.elf
+*.map
+*.o
+*.a
+*.d
+CMakeCache.txt
+CMakeFiles/
+
+# PlatformIO & ESP-IDF Generated Files
+sdkconfig
+sdkconfig.old
+sdkconfig.*
+!sdkconfig.defaults
+dependencies.lock
+
+# IDE & OS Metadata
+.vscode/
+.claude/
+.idea/
+.DS_Store
+Thumbs.db
+*.swp
+
+# Secrets, API Keys & Local Configurations
+config.h
+*.env
 firebase_init.json
 firebase_rules.json
 firebase_populate.json
+
+# Reports & Summaries
 MEMORY_OPTIMIZATION_SUMMARY.md
 PIN_CONFLICT_ANALYSIS.md
 FINAL_CORRECTION_REPORT.md
@@ -8,3 +40,8 @@ CORRECTION_STATUS_REPORT.md
 PIN_CONFIGURATION_SUMMARY.md
 PIN_MIGRATION_GUIDE.md
 PROJECT_SUMMARY.txt
+
+# Language & Dependency Caches
+node_modules/
+__pycache__/
+*.pyc
