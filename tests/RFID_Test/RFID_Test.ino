@@ -10,10 +10,10 @@
 #include <SPI.h>
 #include <MFRC522.h>
 
-// EXACT PIN CONFIGURATION FROM config.h
+// Correct non-conflicting pinout (SPI2 / FSPI)
 #define RFID_MOSI_PIN     11    // SPI MOSI
-#define RFID_MISO_PIN     12    // SPI MISO
-#define RFID_SCK_PIN      13    // SPI Clock
+#define RFID_MISO_PIN     19    // SPI MISO
+#define RFID_SCK_PIN      18    // SPI Clock
 #define RFID_CS_PIN       21    // Chip Select
 #define RFID_RST_PIN      47    // Reset
 

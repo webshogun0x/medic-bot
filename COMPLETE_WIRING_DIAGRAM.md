@@ -24,21 +24,24 @@ This document reflects the **UPDATED** pin assignments after resolving conflicts
 | 7 | UART RX | Display | Input | From display ESP32-S3 |
 | 8 | I2C SDA | Oximeter | Bidirectional | MAX30102 data |
 | 9 | I2C SCL | Oximeter | Output | MAX30102 clock |
-| 12 | SPI MISO | SD Card | Input | HSPI bus |
-| 13 | SPI MOSI | SD Card | Output | HSPI bus |
-| 14 | SPI SCK | SD Card | Output | HSPI bus |
-| 15 | SPI CS | SD Card | Output | HSPI bus |
-| 16 | UART RX | Fingerprint | Input | From sensor |
-| 17 | UART TX | Fingerprint | Output | To sensor |
-| 18 | SPI SCK | RFID | Output | VSPI bus |
-| 19 | SPI MISO | RFID | Input | VSPI bus |
-| 21 | SPI CS | RFID | Output | VSPI bus |
-| 23 | SPI MOSI | RFID | Output | VSPI bus |
+| 10 | GPIO | Voice Guidance | Output | Next Track Trigger |
+| 11 | SPI MOSI | RFID | Output | SPI2 (FSPI) bus |
+| 12 | SPI MISO | SD Card | Input | SPI3 (HSPI) bus |
+| 13 | SPI MOSI | SD Card | Output | SPI3 (HSPI) bus |
+| 14 | SPI SCK | SD Card | Output | SPI3 (HSPI) bus |
+| 15 | SPI CS | SD Card | Output | SPI3 (HSPI) bus |
+| 16 | UART RX | Fingerprint | Input | From AS608 sensor TX |
+| 17 | UART TX | Fingerprint | Output | To AS608 sensor RX |
+| 18 | SPI SCK | RFID | Output | SPI2 (FSPI) bus |
+| 19 | SPI MISO | RFID | Input | SPI2 (FSPI) bus |
+| 21 | SPI CS | RFID | Output | SPI2 (FSPI) bus |
 | 30 | GPIO | Motor Relay | Output | Relay control |
 | 42 | GPIO | Buzzer | Output | Audio feedback |
+| 46 | GPIO | Voice Guidance | Output | Play/Pause Trigger |
 | 47 | GPIO | RFID Reset | Output | MFRC522 reset |
+| 48 | GPIO | Voice Guidance | Output | Module Reset Trigger |
 
-**Total Pins Used**: 19 / 48 available
+**Total Pins Used**: 22 / 48 available
 
 ---
 
@@ -52,7 +55,7 @@ MFRC522 Module          ESP32 Main Controller
 │              │        │                  │
 │  SDA (CS)    │────────│  GPIO 21         │
 │  SCK         │────────│  GPIO 18         │
-│  MOSI        │────────│  GPIO 23         │
+│  MOSI        │────────│  GPIO 11         │
 │  MISO        │────────│  GPIO 19         │
 │  IRQ         │        │  (not connected) │
 │  GND         │────────│  GND             │
