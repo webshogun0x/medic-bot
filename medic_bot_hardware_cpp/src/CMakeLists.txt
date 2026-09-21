@@ -1,0 +1,32 @@
+idf_component_register(
+    SRCS
+        "main.cpp"
+        "as608.cpp"
+        "display_comm.cpp"
+        "espnow_manager.cpp"
+        "mfrc522_driver.cpp"
+        "max30102.c"
+        "storage_manager.cpp"
+        "wifi_manager.cpp"
+        "cloud_sync.cpp"
+        "voice_guidance.cpp"
+        "orchestrator.cpp"
+    INCLUDE_DIRS
+        "../include"
+    REQUIRES
+        driver
+        esp_wifi
+        esp_event
+        esp_netif
+        nvs_flash
+        esp_timer
+        esp_http_client
+        fatfs
+        vfs
+        sdmmc
+        json
+        rc522
+        i2c_bus
+        max30105
+        esp32-idf-sqlite3
+)

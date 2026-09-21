@@ -1,0 +1,9 @@
+# MediBot Kiosk Wi-Fi Configuration File
+# Place this file in the root directory of your MicroSD card as: wifi.txt
+#
+# Supported formats:
+# SSID=YourNetworkName
+# PASSWORD=YourNetworkPassword
+
+SSID=MyPhoneHotspot
+PASSWORD=mysecretpassword

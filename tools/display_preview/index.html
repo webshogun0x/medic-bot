@@ -1,0 +1,2991 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MediBot 7" Touchscreen Display Simulator</title>
+  <style>
+    /* =========================================================
+       THEME PALETTES (Dark & Light Mode)
+       ========================================================= */
+    :root[data-theme="dark"] {
+      --bg-body: #050811;
+      --kiosk-frame: linear-gradient(145deg, #1e2530, #0d121a);
+      --screen-bg: #090e17;
+      --topbar-bg: #111a2d;
+      --card-bg: #162035;
+      --card-sub-bg: #101726;
+      --border-color: #223354;
+      --border-sub: #1a2942;
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+      --text-dim: #64748b;
+      --blue: #0284c7;
+      --blue-glow: rgba(2, 132, 199, 0.35);
+      --green: #10b981;
+      --green-glow: rgba(16, 185, 129, 0.35);
+      --red: #ef4444;
+      --amber: #f59e0b;
+      --terminal-bg: #060911;
+      --needle: #ffffff;
+      --gauge-plate: #0f172a;
+    }
+
+    :root[data-theme="light"] {
+      --bg-body: #e2e8f0;
+      --kiosk-frame: linear-gradient(145deg, #cbd5e1, #94a3b8);
+      --screen-bg: #f8fafc;
+      --topbar-bg: #ffffff;
+      --card-bg: #ffffff;
+      --card-sub-bg: #f1f5f9;
+      --border-color: #cbd5e1;
+      --border-sub: #e2e8f0;
+      --text-main: #0f172a;
+      --text-muted: #475569;
+      --text-dim: #94a3b8;
+      --blue: #0284c7;
+      --blue-glow: rgba(2, 132, 199, 0.2);
+      --green: #059669;
+      --green-glow: rgba(5, 150, 105, 0.2);
+      --red: #dc2626;
+      --amber: #d97706;
+      --terminal-bg: #0f172a;
+      --needle: #0f172a;
+      --gauge-plate: #e2e8f0;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      user-select: none;
+    }
+
+    body {
+      background: var(--bg-body);
+      color: var(--text-main);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 14px 16px;
+    }
+
+    /* Outer Tool Header */
+    .sim-header {
+      width: 100%;
+      max-width: 1050px;
+      margin-bottom: 12px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .sim-header h1 {
+      font-size: 19px;
+      font-weight: 800;
+      color: var(--blue);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .sim-header p {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-top: 2px;
+    }
+    .sim-tools {
+      display: flex;
+      gap: 8px;
+    }
+    .sim-btn {
+      background: var(--card-bg);
+      color: var(--text-main);
+      border: 1px solid var(--border-color);
+      padding: 6px 12px;
+      border-radius: 8px;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .sim-btn:hover {
+      filter: brightness(1.1);
+      border-color: var(--blue);
+    }
+
+    /* Kiosk Hardware Bezel */
+    .kiosk-bezel {
+      width: 840px;
+      height: 520px;
+      background: var(--kiosk-frame);
+      border-radius: 22px;
+      padding: 20px;
+      box-shadow: 0 25px 60px -10px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.08);
+      position: relative;
+      margin-bottom: 14px;
+    }
+    .kiosk-bezel::before {
+      content: "Sunton ESP32-8048S070C • 800 × 480 Native RGB Touchscreen Display";
+      position: absolute;
+      top: 5px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 9px;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: var(--text-dim);
+      font-weight: 700;
+    }
+
+    /* 800x480 Physical Screen Container */
+    .screen {
+      width: 800px;
+      height: 480px;
+      background: var(--screen-bg);
+      border-radius: 6px;
+      overflow: hidden;
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      box-shadow: inset 0 0 10px rgba(0,0,0,0.4);
+    }
+
+    /* Top Common Header Bar (42px) */
+    .top-bar {
+      height: 42px;
+      background: var(--topbar-bg);
+      border-bottom: 1px solid var(--border-color);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0 16px;
+      flex-shrink: 0;
+      z-index: 10;
+    }
+    .brand-group {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      cursor: pointer;
+    }
+    .brand-icon {
+      width: 26px;
+      height: 26px;
+      border-radius: 6px;
+      background: linear-gradient(135deg, #0284c7, #10b981);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-weight: 900;
+      font-size: 14px;
+    }
+    .brand-title {
+      font-weight: 800;
+      font-size: 13px;
+      letter-spacing: 0.5px;
+      color: var(--text-main);
+    }
+    .brand-sub {
+      font-size: 10px;
+      color: var(--text-muted);
+      font-weight: 600;
+    }
+
+    .status-group {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .status-pill {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      background: var(--card-sub-bg);
+      border: 1px solid var(--border-color);
+      padding: 3px 8px;
+      border-radius: 12px;
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+    .status-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--green);
+      box-shadow: 0 0 6px var(--green);
+    }
+    .clock-text {
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--text-main);
+      min-width: 60px;
+      text-align: right;
+    }
+    .theme-toggle-btn {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      background: var(--card-sub-bg);
+      border: 1px solid var(--border-color);
+      color: var(--text-main);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      font-size: 12px;
+    }
+
+    /* Screen Pages Wrapper (438px) */
+    .pages-wrapper {
+      flex: 1;
+      position: relative;
+      overflow: hidden;
+    }
+    .page {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      display: none;
+      flex-direction: column;
+      justify-content: space-between;
+      padding: 14px 18px 8px;
+    }
+    .page.active {
+      display: flex;
+    }
+
+    /* Bottom Page Nav Bar (Shared layout across wizard pages) */
+    .page-footer-nav {
+      height: 48px;
+      border-top: 1px solid var(--border-color);
+      background: var(--topbar-bg);
+      margin: 8px -18px -8px;
+      padding: 0 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-shrink: 0;
+    }
+    .btn-nav {
+      padding: 8px 18px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 800;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      border: 1px solid transparent;
+      transition: transform 0.15s, filter 0.15s;
+    }
+    .btn-nav:hover {
+      filter: brightness(1.1);
+      transform: translateY(-1px);
+    }
+    .btn-nav:active {
+      transform: translateY(1px);
+    }
+    .btn-nav-back {
+      background: var(--card-sub-bg);
+      border-color: var(--border-color);
+      color: var(--text-main);
+    }
+    .btn-nav-next {
+      background: linear-gradient(135deg, #0284c7, #0369a1);
+      border-color: #38bdf8;
+      color: white;
+      box-shadow: 0 2px 10px var(--blue-glow);
+    }
+    .btn-nav-next.green {
+      background: linear-gradient(135deg, #059669, #047857);
+      border-color: #34d399;
+      box-shadow: 0 2px 10px var(--green-glow);
+    }
+    .btn-nav-next:active, .btn-nav-back:active, .btn-home-action:active, .btn-touch-action:active, .btn-quick-test:active {
+      transform: scale(0.96) !important;
+      filter: brightness(1.25);
+    }
+
+    /* Embedded Kiosk Toast Notification */
+    .kiosk-toast {
+      position: absolute;
+      top: 55px;
+      left: 50%;
+      transform: translateX(-50%) translateY(-25px);
+      background: var(--card-bg);
+      border: 2px solid var(--green);
+      color: var(--text-main);
+      padding: 9px 20px;
+      border-radius: 24px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.6);
+      font-size: 13px;
+      font-weight: 800;
+      opacity: 0;
+      pointer-events: none;
+      transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+      z-index: 100;
+    }
+    .kiosk-toast.show {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
+    .kiosk-toast .toast-icon {
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      background: var(--green);
+      color: white;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 11px;
+    }
+
+    .prompt-marquee {
+      font-size: 12px;
+      color: var(--text-muted);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      max-width: 420px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .prompt-marquee strong {
+      color: var(--text-main);
+    }
+
+    /* =========================================================
+       PAGE 1: HOME / STANDBY ATTRACT
+       ========================================================= */
+    .home-hero {
+      margin-top: 10px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+    }
+    .home-beacon {
+      width: 90px;
+      height: 90px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(14, 165, 233, 0.25) 0%, rgba(14, 165, 233, 0) 70%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      animation: pulse-ring 2.5s infinite;
+      cursor: pointer;
+      margin-bottom: 8px;
+    }
+    @keyframes pulse-ring {
+      0% { box-shadow: 0 0 0 0 rgba(14, 165, 233, 0.5); }
+      70% { box-shadow: 0 0 0 22px rgba(14, 165, 233, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(14, 165, 233, 0); }
+    }
+    .home-beacon-circle {
+      width: 62px;
+      height: 62px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #0284c7, #0369a1);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 4px 15px rgba(2, 132, 199, 0.4);
+    }
+    .home-beacon-circle svg {
+      width: 30px;
+      height: 30px;
+      fill: white;
+    }
+    .home-title {
+      font-size: 24px;
+      font-weight: 800;
+      color: var(--text-main);
+    }
+    .home-sub {
+      font-size: 13px;
+      color: var(--text-muted);
+      margin-top: 4px;
+    }
+
+    /* Giant Home Action Buttons */
+    .home-buttons-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 18px;
+      width: 100%;
+      max-width: 660px;
+      margin: 0 auto 16px;
+    }
+    .btn-home-action {
+      height: 105px;
+      border-radius: 16px;
+      border: 2px solid transparent;
+      display: flex;
+      align-items: center;
+      padding: 0 20px;
+      gap: 16px;
+      cursor: pointer;
+      text-align: left;
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+    .btn-home-action:hover {
+      transform: translateY(-3px) scale(1.02);
+      box-shadow: 0 10px 25px rgba(0,0,0,0.3);
+    }
+    .btn-home-action:active {
+      transform: translateY(1px);
+    }
+    .btn-home-login {
+      background: linear-gradient(135deg, #1e3a8a, #0369a1);
+      border-color: #3b82f6;
+    }
+    .btn-home-signup {
+      background: linear-gradient(135deg, #064e3b, #047857);
+      border-color: #10b981;
+    }
+    .home-action-icon {
+      width: 50px;
+      height: 50px;
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.18);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    .home-action-icon svg {
+      width: 26px;
+      height: 26px;
+      fill: white;
+    }
+    .home-action-h2 {
+      font-size: 17px;
+      font-weight: 800;
+      color: white;
+    }
+    .home-action-p {
+      font-size: 11px;
+      color: rgba(255,255,255,0.8);
+      margin-top: 2px;
+    }
+
+    /* =========================================================
+       PAGE CONTENT STYLES (Login & Signup Steps)
+       ========================================================= */
+    .step-page-content {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 10px;
+    }
+    .step-hero-icon {
+      width: 80px;
+      height: 80px;
+      border-radius: 20px;
+      background: var(--card-sub-bg);
+      border: 2px solid var(--border-color);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 12px;
+    }
+    .step-hero-icon svg {
+      width: 44px;
+      height: 44px;
+      fill: var(--blue);
+    }
+    .step-hero-icon.green svg {
+      fill: var(--green);
+    }
+    .step-hero-icon.success {
+      border-color: var(--green);
+      background: rgba(16, 185, 129, 0.15);
+    }
+    .step-hero-icon.success svg {
+      fill: var(--green);
+    }
+
+    .step-title {
+      font-size: 20px;
+      font-weight: 800;
+      color: var(--text-main);
+    }
+    .step-subtitle {
+      font-size: 13px;
+      color: var(--text-muted);
+      max-width: 480px;
+      margin-top: 4px;
+      line-height: 1.4;
+    }
+
+    .btn-touch-action {
+      background: var(--card-bg);
+      border: 2px solid var(--blue);
+      color: var(--text-main);
+      padding: 14px 28px;
+      border-radius: 14px;
+      font-size: 15px;
+      font-weight: 800;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-top: 18px;
+      box-shadow: 0 4px 18px var(--blue-glow);
+      transition: all 0.2s;
+    }
+    .btn-touch-action:hover {
+      background: var(--blue);
+      color: white;
+      transform: scale(1.03);
+    }
+    .btn-touch-action.green {
+      border-color: var(--green);
+      box-shadow: 0 4px 18px var(--green-glow);
+    }
+    .btn-touch-action.green:hover {
+      background: var(--green);
+      color: white;
+    }
+    .btn-touch-action.verified {
+      background: rgba(16, 185, 129, 0.15);
+      border-color: var(--green);
+      color: var(--green);
+      pointer-events: none;
+    }
+
+    .badge-card-uid {
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--green);
+      background: rgba(16, 185, 129, 0.12);
+      padding: 4px 12px;
+      border-radius: 8px;
+      border: 1px solid var(--green);
+      margin-top: 10px;
+      display: inline-block;
+    }
+
+    /* Touch Form Inputs */
+    .touch-form-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+      width: 100%;
+      max-width: 540px;
+      margin-top: 14px;
+      text-align: left;
+    }
+    .form-item {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .form-item label {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .form-item input, .form-item select {
+      background: var(--card-sub-bg);
+      border: 1px solid var(--border-color);
+      color: var(--text-main);
+      padding: 10px 12px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      outline: none;
+    }
+    .form-item input:focus, .form-item select:focus {
+      border-color: var(--green);
+    }
+
+    /* =========================================================
+       PAGE 4: ANALYTICS DASHBOARD (BMI_Dashboard_2.png)
+       ========================================================= */
+    .analytics-layout {
+      flex: 1;
+      display: grid;
+      grid-template-columns: 310px 1fr;
+      gap: 12px;
+      min-height: 0;
+    }
+    .card-speedometer {
+      background: var(--card-bg);
+      border: 1px solid var(--border-color);
+      border-radius: 14px;
+      padding: 12px 14px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .card-header-row {
+      width: 100%;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .card-h3 {
+      font-size: 12px;
+      font-weight: 800;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .bmi-pill {
+      font-size: 11px;
+      font-weight: 800;
+      padding: 2px 8px;
+      border-radius: 6px;
+      background: rgba(16, 185, 129, 0.15);
+      color: var(--green);
+      border: 1px solid var(--green);
+    }
+    .speedo-wrap {
+      width: 240px;
+      height: 140px;
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .speedo-svg {
+      width: 240px;
+      height: 140px;
+      overflow: visible;
+    }
+    .speedo-needle {
+      transform-origin: 125px 125px;
+      transition: transform 1.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+    .speedo-center-val {
+      position: absolute;
+      bottom: 2px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    .speedo-num {
+      font-size: 32px;
+      font-weight: 900;
+      color: var(--text-main);
+      line-height: 1;
+    }
+    .speedo-cat {
+      font-size: 11px;
+      font-weight: 800;
+      color: var(--green);
+      text-transform: uppercase;
+      margin-top: 2px;
+    }
+    .speedo-legend {
+      width: 100%;
+      display: flex;
+      justify-content: space-between;
+      font-size: 9px;
+      font-weight: 700;
+      color: var(--text-muted);
+      padding: 0 4px;
+    }
+    .speedo-subgrid {
+      width: 100%;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      background: var(--card-sub-bg);
+      border-radius: 8px;
+      padding: 6px 10px;
+      border: 1px solid var(--border-sub);
+    }
+    .subgrid-box {
+      text-align: center;
+    }
+    .subgrid-lbl {
+      font-size: 10px;
+      color: var(--text-muted);
+      font-weight: 700;
+    }
+    .subgrid-val {
+      font-size: 14px;
+      font-weight: 800;
+      color: var(--text-main);
+      margin-top: 1px;
+    }
+
+    .vitals-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      grid-template-rows: 1fr 1fr;
+      gap: 10px;
+    }
+    .vital-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      padding: 10px 12px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      position: relative;
+      overflow: hidden;
+    }
+    .vital-card::after {
+      content: "";
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 4px;
+      height: 100%;
+      background: var(--card-accent, #38bdf8);
+    }
+    .vital-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .vital-name {
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--text-muted);
+    }
+    .vital-badge-tag {
+      font-size: 10px;
+      font-weight: 700;
+      padding: 2px 6px;
+      border-radius: 4px;
+      background: var(--card-sub-bg);
+      color: var(--text-main);
+    }
+    .vital-val-row {
+      display: flex;
+      align-items: baseline;
+      gap: 6px;
+      margin: 2px 0;
+    }
+    .vital-number {
+      font-size: 26px;
+      font-weight: 900;
+      color: var(--text-main);
+      line-height: 1;
+    }
+    .vital-unit-text {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--text-muted);
+    }
+    .vital-sparkline-canvas {
+      width: 100%;
+      height: 28px;
+      display: block;
+    }
+
+    /* =========================================================
+       PAGE 5: PROFILE & TRENDS (BMI_Dashboard.png)
+       ========================================================= */
+    .profile-layout {
+      flex: 1;
+      display: grid;
+      grid-template-columns: 280px 1fr;
+      gap: 12px;
+      min-height: 0;
+    }
+    .profile-sidebar {
+      background: var(--card-bg);
+      border: 1px solid var(--border-color);
+      border-radius: 14px;
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: space-between;
+      text-align: center;
+    }
+    .profile-avatar-circle {
+      width: 66px;
+      height: 66px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #38bdf8, #818cf8);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 22px;
+      font-weight: 900;
+      color: white;
+      margin-bottom: 6px;
+      border: 2px solid var(--border-color);
+    }
+    .profile-h2 {
+      font-size: 16px;
+      font-weight: 800;
+      color: var(--text-main);
+    }
+    .profile-med-tag {
+      font-size: 11px;
+      color: var(--blue);
+      font-weight: 800;
+      background: var(--card-sub-bg);
+      padding: 2px 8px;
+      border-radius: 8px;
+      margin-top: 3px;
+      display: inline-block;
+      border: 1px solid var(--border-sub);
+    }
+    .profile-demolist {
+      width: 100%;
+      background: var(--card-sub-bg);
+      border-radius: 8px;
+      padding: 8px 12px;
+      border: 1px solid var(--border-sub);
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px;
+      text-align: left;
+    }
+    .pitem-lbl { font-size: 9px; color: var(--text-muted); font-weight: 700; }
+    .pitem-val { font-size: 13px; font-weight: 800; color: var(--text-main); }
+
+    .profile-chart-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border-color);
+      border-radius: 14px;
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+    .chart-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .chart-canvas-box {
+      width: 100%;
+      height: 180px;
+      margin-top: 6px;
+    }
+
+    /* Measurement Modal Overlay */
+    .modal-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(5, 8, 17, 0.85);
+      backdrop-filter: blur(4px);
+      z-index: 50;
+      display: none;
+      align-items: center;
+      justify-content: center;
+    }
+    .modal-overlay.active { display: flex; }
+    .modal-card {
+      width: 460px;
+      background: var(--card-bg);
+      border: 2px solid var(--blue);
+      border-radius: 18px;
+      padding: 22px;
+      text-align: center;
+      box-shadow: 0 20px 50px rgba(0,0,0,0.6);
+    }
+    .modal-pulse-icon {
+      width: 60px;
+      height: 60px;
+      border-radius: 50%;
+      background: rgba(2, 132, 199, 0.15);
+      border: 2px solid var(--blue);
+      margin: 0 auto 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .modal-pulse-icon svg { width: 30px; height: 30px; fill: var(--blue); }
+    .modal-title { font-size: 18px; font-weight: 800; color: var(--text-main); }
+    .modal-sub { font-size: 13px; color: var(--text-muted); margin: 4px 0 14px; }
+    .modal-bar-wrap {
+      width: 100%;
+      height: 8px;
+      background: var(--card-sub-bg);
+      border-radius: 4px;
+      overflow: hidden;
+      margin-bottom: 14px;
+      border: 1px solid var(--border-color);
+    }
+    .modal-bar-fill {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, #0284c7, #10b981);
+      transition: width 0.3s linear;
+    }
+
+    /* Terminal Debug Panel */
+    .debug-dock {
+      width: 100%;
+      max-width: 1050px;
+      background: var(--topbar-bg);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      padding: 12px 16px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+    .debug-title {
+      font-size: 12px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      color: var(--blue);
+      margin-bottom: 6px;
+      display: flex;
+      justify-content: space-between;
+    }
+    .term-box {
+      width: 100%;
+      height: 135px;
+      background: var(--terminal-bg);
+      border: 1px solid var(--border-sub);
+      border-radius: 6px;
+      padding: 8px;
+      font-family: monospace;
+      font-size: 11px;
+      color: #94a3b8;
+      overflow-y: auto;
+      line-height: 1.4;
+    }
+    .term-tx { color: #38bdf8; }
+    .term-rx { color: #34d399; }
+    .term-sys { color: #f59e0b; }
+
+    .test-btn-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 6px;
+    }
+    .btn-quick-test {
+      background: var(--card-sub-bg);
+      border: 1px solid var(--border-color);
+      color: var(--text-main);
+      padding: 7px;
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 700;
+      cursor: pointer;
+      text-align: left;
+    }
+    .btn-quick-test:hover {
+      border-color: var(--blue);
+    }
+    .btn-quick-test span {
+      display: block;
+      font-size: 9px;
+      color: var(--text-muted);
+      font-weight: 500;
+      margin-top: 1px;
+    }
+
+    /* =========================================================
+       BOOT PROGRESS & DIAGNOSTICS
+       ========================================================= */
+    .boot-progress-container {
+      width: 100%;
+      max-width: 560px;
+      margin: 8px 0 10px;
+    }
+    .boot-progress-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 11px;
+      font-weight: 700;
+      margin-bottom: 5px;
+    }
+    .boot-task-label {
+      color: var(--blue);
+    }
+    .boot-pct-label {
+      font-weight: 900;
+      color: var(--green);
+      font-family: monospace;
+      font-size: 13px;
+    }
+    .boot-bar-wrap {
+      width: 100%;
+      height: 12px;
+      background: var(--card-sub-bg);
+      border-radius: 6px;
+      overflow: hidden;
+      border: 1px solid var(--border-color);
+      box-shadow: inset 0 1px 3px rgba(0,0,0,0.5);
+    }
+    .boot-bar-fill {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, #0284c7, #10b981);
+      box-shadow: 0 0 10px var(--green-glow);
+      transition: width 0.35s ease-out;
+    }
+    .boot-diag-list {
+      background: var(--card-bg);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      padding: 8px 12px;
+      width: 100%;
+      max-width: 560px;
+      text-align: left;
+      font-size: 11px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .boot-diag-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 4px 8px;
+      border-radius: 6px;
+      background: var(--card-sub-bg);
+      border: 1px solid var(--border-sub);
+    }
+    .boot-diag-name {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-weight: 600;
+      color: var(--text-main);
+    }
+    .boot-pill {
+      font-size: 10px;
+      font-weight: 800;
+      padding: 2px 7px;
+      border-radius: 5px;
+      background: rgba(16, 185, 129, 0.15);
+      color: var(--green);
+      border: 1px solid var(--green);
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .boot-pill.pending {
+      background: rgba(148, 163, 184, 0.1);
+      color: var(--text-dim);
+      border-color: var(--border-color);
+    }
+    .boot-pill.running {
+      background: rgba(2, 132, 199, 0.15);
+      color: var(--blue);
+      border-color: var(--blue);
+      animation: pulse-badge 1s infinite;
+    }
+    .boot-action-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      width: 100%;
+      max-width: 560px;
+      margin-top: 8px;
+    }
+
+    /* =========================================================
+       BLOOD PRESSURE MANUAL ENTRY STYLES
+       ========================================================= */
+    .bp-pill-btn {
+      background: rgba(139, 92, 246, 0.18);
+      border: 1px solid #8b5cf6;
+      color: #a78bfa;
+      font-size: 9px;
+      font-weight: 800;
+      padding: 2px 7px;
+      border-radius: 5px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      transition: all 0.15s;
+    }
+    .bp-pill-btn:hover {
+      background: #8b5cf6;
+      color: white;
+    }
+    .bp-quick-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: var(--card-sub-bg);
+      border: 1px solid var(--border-sub);
+      border-radius: 6px;
+      padding: 3px 6px;
+      margin-top: 2px;
+    }
+    .bp-quick-item {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 10px;
+      font-weight: 700;
+      color: var(--text-muted);
+    }
+    .bp-quick-item strong {
+      color: var(--text-main);
+      font-size: 12px;
+      font-family: monospace;
+      min-width: 24px;
+      text-align: center;
+    }
+    .bp-stepper-btn {
+      width: 18px;
+      height: 18px;
+      border-radius: 4px;
+      background: var(--card-bg);
+      border: 1px solid var(--border-color);
+      color: var(--text-main);
+      font-size: 11px;
+      font-weight: 800;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      line-height: 1;
+    }
+    .bp-stepper-btn:hover {
+      background: var(--blue);
+      color: white;
+      border-color: var(--blue);
+    }
+
+    /* Dedicated BP Modal Layout */
+    .bp-modal-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin: 10px 0;
+    }
+    .bp-col-box {
+      background: var(--card-sub-bg);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      padding: 10px;
+      text-align: center;
+    }
+    .bp-col-title {
+      font-size: 11px;
+      font-weight: 800;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .bp-col-val {
+      font-size: 34px;
+      font-weight: 900;
+      color: var(--text-main);
+      font-family: monospace;
+      line-height: 1.1;
+      margin: 4px 0;
+    }
+    .bp-col-unit {
+      font-size: 10px;
+      color: var(--text-dim);
+      font-weight: 700;
+    }
+    .bp-btn-stepper-row {
+      display: flex;
+      justify-content: center;
+      gap: 6px;
+      margin-top: 8px;
+    }
+    .bp-step-action {
+      background: var(--card-bg);
+      border: 1px solid var(--border-color);
+      color: var(--text-main);
+      padding: 6px 10px;
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 800;
+      cursor: pointer;
+    }
+    .bp-step-action:hover {
+      background: var(--blue);
+      color: white;
+      border-color: var(--blue);
+    }
+    .bp-cat-banner {
+      background: rgba(16, 185, 129, 0.12);
+      border: 1px solid var(--green);
+      color: var(--green);
+      border-radius: 8px;
+      padding: 6px 12px;
+      font-size: 11px;
+      font-weight: 800;
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+    }
+    .bp-preset-chips {
+      display: flex;
+      justify-content: center;
+      gap: 6px;
+      margin-bottom: 12px;
+      flex-wrap: wrap;
+    }
+    .bp-chip {
+      background: var(--card-sub-bg);
+      border: 1px solid var(--border-sub);
+      color: var(--text-muted);
+      font-size: 10px;
+      font-weight: 700;
+      padding: 3px 8px;
+      border-radius: 12px;
+      cursor: pointer;
+    }
+    .bp-chip:hover {
+      border-color: var(--blue);
+      color: var(--text-main);
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Top Simulator Bar -->
+  <div class="sim-header">
+    <div>
+      <h1>
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+        MediBot 7" Kiosk Touchscreen Simulator
+      </h1>
+      <p>Sunton ESP32-8048S070C • Touchscreen Navigation Flow • Real-Time UART Telemetry</p>
+    </div>
+    <div class="sim-tools">
+      <button class="sim-btn" onclick="toggleTheme()">
+        <span id="theme-btn-text">☀️ Light Mode</span>
+      </button>
+      <button class="sim-btn" onclick="goToPage('page-boot')">
+        <span>🔄 View Boot Screen</span>
+      </button>
+      <button class="sim-btn" onclick="goToPage('page-idle')">
+        <span>🏠 Reset to Standby</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- Physical Kiosk Bezel (840x520) -->
+  <div class="kiosk-bezel">
+    <!-- LCD Screen (800x480) -->
+    <div class="screen">
+
+      <!-- Common Top Status Bar -->
+      <div class="top-bar">
+        <div class="brand-group" onclick="goToPage('page-idle')" title="Touch to return to Standby Screen">
+          <div class="brand-icon">+</div>
+          <div>
+            <div class="brand-title">MEDIBOT</div>
+          </div>
+          <div class="brand-sub">HEALTH KIOSK</div>
+        </div>
+        <div class="status-group">
+          <div class="status-pill">
+            <span class="status-dot"></span>
+            <span>WiFi: 192.168.1.142</span>
+          </div>
+          <div class="status-pill">
+            <span class="status-dot"></span>
+            <span>Cloud: Synced</span>
+          </div>
+          <div class="clock-text" id="clock-display">10:45 AM</div>
+          <button class="theme-toggle-btn" onclick="toggleTheme()" title="Toggle Dark/Light Mode">☀️</button>
+        </div>
+      </div>
+
+      <!-- Main Pages Container -->
+      <div class="pages-wrapper">
+
+        <!-- ========================================================
+             PAGE 0: BOOT & DIAGNOSTIC DIAGNOSTICS SCREEN
+             ======================================================== -->
+        <div class="page" id="page-boot">
+          <div class="step-page-content" style="padding-top:10px;">
+            <div class="step-hero-icon" style="width:48px; height:48px; margin-bottom:4px;">
+              <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg>
+            </div>
+            <h2 class="step-title" style="font-size:18px;">MediBot System Boot & Self-Check</h2>
+            <p class="step-subtitle" style="font-size:11px; margin-bottom:8px;">Subsystem initialization, connectivity handshake & sensor calibration</p>
+
+            <!-- Loading Progress Bar -->
+            <div class="boot-progress-container">
+              <div class="boot-progress-header">
+                <span class="boot-task-label" id="boot-task-text">Initializing ESP32-S3 Core Hardware...</span>
+                <span class="boot-pct-label" id="boot-pct-text">0%</span>
+              </div>
+              <div class="boot-bar-wrap">
+                <div class="boot-bar-fill" id="boot-bar-fill" style="width:0%;"></div>
+              </div>
+            </div>
+
+            <!-- Diagnostics Subsystems List -->
+            <div class="boot-diag-list">
+              <div class="boot-diag-item" id="boot-item-core">
+                <div class="boot-diag-name">
+                  <span>⚙️</span>
+                  <span>ESP32-S3 Dual-Core (240MHz) & PSRAM</span>
+                </div>
+                <span class="boot-pill pending" id="boot-status-core">PENDING</span>
+              </div>
+
+              <div class="boot-diag-item" id="boot-item-wifi">
+                <div class="boot-diag-name">
+                  <span>📶</span>
+                  <span>Wi-Fi Kiosk Station (MediBot_Clinic_Net)</span>
+                </div>
+                <span class="boot-pill pending" id="boot-status-wifi">PENDING</span>
+              </div>
+
+              <div class="boot-diag-item" id="boot-item-cloud">
+                <div class="boot-diag-name">
+                  <span>☁️</span>
+                  <span>Firebase Realtime Database & SSL Sync</span>
+                </div>
+                <span class="boot-pill pending" id="boot-status-cloud">PENDING</span>
+              </div>
+
+              <div class="boot-diag-item" id="boot-item-sensors">
+                <div class="boot-diag-name">
+                  <span>🩺</span>
+                  <span>Medical Sensors: MAX30102, RC522, AS608, Scale</span>
+                </div>
+                <span class="boot-pill pending" id="boot-status-sensors">PENDING</span>
+              </div>
+            </div>
+
+            <div class="boot-action-row">
+              <button class="sim-btn" onclick="startBootSequence()" style="font-size:11px; padding:4px 10px;">
+                🔄 Restart Self-Check Animation
+              </button>
+              <span id="boot-note-text" style="font-size:11px; color:var(--text-dim);">Audio-haptic boot sequence active</span>
+            </div>
+          </div>
+
+          <div class="page-footer-nav">
+            <div class="prompt-marquee" id="boot-marquee">📢 <strong>Booting System...</strong> Please wait while hardware initializes.</div>
+            <button class="btn-nav btn-nav-next" id="btn-boot-proceed" onclick="goToPage('page-idle')">
+              Enter Standby Screen →
+            </button>
+          </div>
+        </div>
+
+        <!-- ========================================================
+             PAGE 1: STANDBY / IDLE HOME SCREEN (Default active)
+             ======================================================== -->
+        <div class="page active" id="page-idle">
+          <div class="home-hero">
+            <div class="home-beacon" onclick="goToPage('page-login-card')" title="Tap RFID Card to start">
+              <div class="home-beacon-circle">
+                <svg viewBox="0 0 24 24"><path d="M20 4H4c-1.11 0-1.99.89-1.99 2L2 18c0 1.11.89 2 2 2h16c1.11 0 2-.89 2-2V6c0-1.11-.89-2-2-2zm0 14H4v-6h16v6zm0-10H4V6h16v2z"/></svg>
+              </div>
+            </div>
+            <h1 class="home-title">Welcome to MediBot</h1>
+            <p class="home-sub">Touch an option below or tap your clinic card against the scanner to begin</p>
+          </div>
+
+          <div class="home-buttons-grid">
+            <!-- Large Touch Button 1: Existing Patient -->
+            <div class="btn-home-action btn-home-login" onclick="handleStartLoginClick()">
+              <div class="home-action-icon">
+                <svg viewBox="0 0 24 24"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
+              </div>
+              <div>
+                <div class="home-action-h2">Existing Patient</div>
+                <div class="home-action-p">Login with RFID Badge & Biometrics</div>
+              </div>
+            </div>
+
+            <!-- Large Touch Button 2: New Registration -->
+            <div class="btn-home-action btn-home-signup" onclick="handleStartSignupClick()">
+              <div class="home-action-icon">
+                <svg viewBox="0 0 24 24"><path d="M15 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm-9-2V7H4v3H1v2h3v3h2v-3h3v-2H6zm9 4c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
+              </div>
+              <div>
+                <div class="home-action-h2">New Registration</div>
+                <div class="home-action-p">Sign Up & Assign Clinic Badge</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="page-footer-nav">
+            <div class="prompt-marquee">📢 <strong>System ready.</strong> Please select Login or Enroll to begin.</div>
+            <div>Track 03 • Standby</div>
+          </div>
+        </div>
+
+        <!-- ========================================================
+             PAGE 2A: LOGIN STEP 1 — SCAN RFID CARD
+             ======================================================== -->
+        <div class="page" id="page-login-card">
+          <div class="step-page-content">
+            <div class="step-hero-icon" id="login-card-icon" onclick="handleLoginCardProceed()" style="cursor:pointer;" title="Touch to scan card">
+              <svg viewBox="0 0 24 24"><path d="M20 4H4c-1.11 0-1.99.89-1.99 2L2 18c0 1.11.89 2 2 2h16c1.11 0 2-.89 2-2V6c0-1.11-.89-2-2-2zm0 14H4v-6h16v6zm0-10H4V6h16v2z"/></svg>
+            </div>
+            <h2 class="step-title" id="login-card-title">Step 1: Scan Your RFID Clinic Badge</h2>
+            <p class="step-subtitle" id="login-card-desc">Hold your clinic card near the reader or touch below to verify & proceed</p>
+
+            <button class="btn-touch-action" id="btn-login-simulate-card" onclick="handleLoginCardProceed()">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M20 4H4c-1.11 0-1.99.89-1.99 2L2 18c0 1.11.89 2 2 2h16c1.11 0 2-.89 2-2V6c0-1.11-.89-2-2-2zm0 14H4v-6h16v6zm0-10H4V6h16v2z"/></svg>
+              <span>💳 TAP RFID BADGE TO VERIFY & PROCEED →</span>
+            </button>
+
+            <div id="login-card-matched-box" style="display:none; margin-top:14px;">
+              <span class="badge-card-uid">✓ Card Matched: UID A1B2C3D4</span>
+              <div style="font-size:15px; font-weight:800; color:var(--text-main); margin-top:4px;">Patient Found: Sarah Jenkins (MB-94021)</div>
+            </div>
+          </div>
+
+          <div class="page-footer-nav">
+            <button class="btn-nav btn-nav-back" onclick="handleCancelBack()">
+              ← Cancel & Go Back
+            </button>
+            <div class="prompt-marquee">📢 <strong>Track 04</strong>: Please scan your RFID card on the reader.</div>
+            <button class="btn-nav btn-nav-next" id="btn-login-next-to-fp" onclick="handleLoginCardProceed()">
+              Next: Fingerprint Scan →
+            </button>
+          </div>
+        </div>
+
+        <!-- ========================================================
+             PAGE 2B: LOGIN STEP 2 — FINGERPRINT VERIFICATION
+             ======================================================== -->
+        <div class="page" id="page-login-fp">
+          <div class="step-page-content">
+            <div class="step-hero-icon" id="login-fp-icon" onclick="handleLoginFpProceed()" style="cursor:pointer;" title="Touch to scan fingerprint">
+              <svg viewBox="0 0 24 24"><path d="M17.81 4.47c-.08 0-.16-.02-.23-.06C15.66 3.42 14 3 12.01 3c-1.98 0-3.86.47-5.57 1.41-.24.13-.54.04-.68-.2-.13-.24-.04-.55.2-.68C7.82 2.52 9.86 2 12.01 2c2.13 0 3.99.47 6.03 1.52.25.13.34.43.21.67-.09.18-.26.28-.44.28zM3.5 9.72c-.1 0-.2-.03-.29-.09-.23-.16-.28-.47-.12-.7.99-1.4 2.25-2.5 3.75-3.27C9.9 4.04 14 4.03 17.15 5.65c1.5.77 2.76 1.86 3.75 3.25.16.22.11.54-.12.7-.23.16-.54.11-.7-.12-.9-1.26-2.04-2.25-3.39-2.94-2.87-1.47-6.54-1.47-9.4 0-1.36.7-2.5 1.7-3.4 2.96-.08.14-.23.22-.39.22zm6.25 12.07c-.13 0-.26-.05-.35-.15-.87-.87-1.34-1.43-2.01-2.64-.69-1.23-1.05-2.73-1.05-4.34 0-2.97 2.54-5.39 5.66-5.39s5.66 2.42 5.66 5.39c0 .28-.22.5-.5.5s-.5-.22-.5-.5c0-2.42-2.09-4.39-4.66-4.39-2.57 0-4.66 1.97-4.66 4.39 0 1.44.32 2.77.93 3.85.58 1.06 1 1.55 1.76 2.31.2.2.2.51 0 .71-.09.1-.22.17-.34.17zm7.39-4.88c-.28 0-.5-.22-.5-.5 0-2.49-2.02-4.51-4.51-4.51s-4.51 2.02-4.51 4.51c0 .28-.22.5-.5.5s-.5-.22-.5-.5c0-3.04 2.47-5.51 5.51-5.51s5.51 2.47 5.51 5.51c0 .28-.22.5-.5.5z"/></svg>
+            </div>
+            <h2 class="step-title" id="login-fp-title">Step 2: Biometric Verification</h2>
+            <p class="step-subtitle">Place your registered finger firmly on the optical scanner to enter</p>
+
+            <button class="btn-touch-action" id="btn-login-simulate-fp" onclick="handleLoginFpProceed()">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 15l-5-5 1.41-1.41L11 14.17l7.59-7.59L20 8l-9 9z"/></svg>
+              <span>👆 TOUCH SENSOR TO AUTHENTICATE & OPEN DASHBOARD →</span>
+            </button>
+
+            <div id="login-fp-matched-box" style="display:none; margin-top:14px;">
+              <span class="badge-card-uid">✓ Identity Confirmed: 99.4% Match</span>
+              <div style="font-size:14px; font-weight:700; color:var(--text-main); margin-top:4px;">Welcome back, Sarah Jenkins!</div>
+            </div>
+          </div>
+
+          <div class="page-footer-nav">
+            <button class="btn-nav btn-nav-back" onclick="goToPage('page-login-card')">
+              ← Back to Card
+            </button>
+            <div class="prompt-marquee">📢 <strong>Track 06</strong>: Scanning fingerprint. Keep steady.</div>
+            <button class="btn-nav btn-nav-next green" id="btn-login-enter-dash" onclick="handleLoginFpProceed()">
+              Open My Dashboard →
+            </button>
+          </div>
+        </div>
+
+        <!-- ========================================================
+             PAGE 3A: SIGN UP STEP 1 — ASSIGN NEW CARD
+             ======================================================== -->
+        <div class="page" id="page-signup-card">
+          <div class="step-page-content">
+            <div class="step-hero-icon green" id="signup-card-icon" onclick="handleSignupCardProceed()" style="cursor:pointer;" title="Touch to assign card">
+              <svg viewBox="0 0 24 24"><path d="M20 4H4c-1.11 0-1.99.89-1.99 2L2 18c0 1.11.89 2 2 2h16c1.11 0 2-.89 2-2V6c0-1.11-.89-2-2-2zm0 14H4v-6h16v6zm0-10H4V6h16v2z"/></svg>
+            </div>
+            <h2 class="step-title">Registration Step 1: Assign RFID Badge</h2>
+            <p class="step-subtitle">Tap a new, unassigned clinic card to pair with the new patient record</p>
+
+            <button class="btn-touch-action green" id="btn-signup-simulate-card" onclick="handleSignupCardProceed()">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M20 4H4c-1.11 0-1.99.89-1.99 2L2 18c0 1.11.89 2 2 2h16c1.11 0 2-.89 2-2V6c0-1.11-.89-2-2-2zm0 14H4v-6h16v6zm0-10H4V6h16v2z"/></svg>
+              <span>💳 TAP NEW RFID CARD TO ASSIGN & CONTINUE →</span>
+            </button>
+
+            <div id="signup-card-assigned-box" style="display:none; margin-top:14px;">
+              <span class="badge-card-uid">✓ Card Available for Pairing: UID 33A4B5C6</span>
+              <div style="font-size:14px; font-weight:700; color:var(--text-main); margin-top:4px;">Medical ID Assigned: MB-94025</div>
+            </div>
+          </div>
+
+          <div class="page-footer-nav">
+            <button class="btn-nav btn-nav-back" onclick="handleCancelBack()">
+              ← Cancel Registration
+            </button>
+            <div class="prompt-marquee">📢 <strong>Track 09</strong>: Please scan your RFID card to register.</div>
+            <button class="btn-nav btn-nav-next green" id="btn-signup-next-to-info" onclick="handleSignupCardProceed()">
+              Next: Patient Information →
+            </button>
+          </div>
+        </div>
+
+        <!-- ========================================================
+             PAGE 3B: SIGN UP STEP 2 — PATIENT INFORMATION
+             ======================================================== -->
+        <div class="page" id="page-signup-info">
+          <div class="step-page-content">
+            <h2 class="step-title">Registration Step 2: Patient Details</h2>
+            <p class="step-subtitle">Review or edit your clinic demographics below</p>
+
+            <div class="touch-form-grid">
+              <div class="form-item">
+                <label>Assigned RFID Card</label>
+                <input type="text" id="reg-card-uid" value="33A4B5C6" readonly style="color:var(--green); font-weight:800;" />
+              </div>
+              <div class="form-item">
+                <label>Generated Medical ID</label>
+                <input type="text" id="reg-med-id" value="MB-94025" readonly style="color:var(--blue); font-weight:800;" />
+              </div>
+              <div class="form-item">
+                <label>Patient Full Name</label>
+                <input type="text" id="reg-name" value="Emma Watson" />
+              </div>
+              <div class="form-item">
+                <label>Age & Gender</label>
+                <div style="display:flex; gap:6px;">
+                  <input type="text" id="reg-age" value="22" style="width:65px;" />
+                  <select id="reg-gender" style="flex:1;">
+                    <option value="Female">Female</option>
+                    <option value="Male">Male</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="page-footer-nav">
+            <button class="btn-nav btn-nav-back" onclick="goToPage('page-signup-card')">
+              ← Back to Card
+            </button>
+            <div class="prompt-marquee">📢 <strong>Track 10</strong>: Card detected. Prepare for fingerprint enrollment.</div>
+            <button class="btn-nav btn-nav-next green" onclick="handleSignupInfoProceed()">
+              Next: Biometrics (Scan 1) →
+            </button>
+          </div>
+        </div>
+
+        <!-- ========================================================
+             PAGE 3C: SIGN UP STEP 3 — FINGERPRINT SCAN 1/2
+             ======================================================== -->
+        <div class="page" id="page-signup-fp1">
+          <div class="step-page-content">
+            <div class="step-hero-icon green" id="sfp1-icon" onclick="handleSignupFp1Proceed()" style="cursor:pointer;" title="Touch to capture scan 1">
+              <svg viewBox="0 0 24 24"><path d="M17.81 4.47c-.08 0-.16-.02-.23-.06C15.66 3.42 14 3 12.01 3c-1.98 0-3.86.47-5.57 1.41-.24.13-.54.04-.68-.2-.13-.24-.04-.55.2-.68C7.82 2.52 9.86 2 12.01 2c2.13 0 3.99.47 6.03 1.52.25.13.34.43.21.67-.09.18-.26.28-.44.28zM3.5 9.72c-.1 0-.2-.03-.29-.09-.23-.16-.28-.47-.12-.7.99-1.4 2.25-2.5 3.75-3.27C9.9 4.04 14 4.03 17.15 5.65c1.5.77 2.76 1.86 3.75 3.25.16.22.11.54-.12.7-.23.16-.54.11-.7-.12-.9-1.26-2.04-2.25-3.39-2.94-2.87-1.47-6.54-1.47-9.4 0-1.36.7-2.5 1.7-3.4 2.96-.08.14-.23.22-.39.22zm6.25 12.07c-.13 0-.26-.05-.35-.15-.87-.87-1.34-1.43-2.01-2.64-.69-1.23-1.05-2.73-1.05-4.34 0-2.97 2.54-5.39 5.66-5.39s5.66 2.42 5.66 5.39c0 .28-.22.5-.5.5s-.5-.22-.5-.5c0-2.42-2.09-4.39-4.66-4.39-2.57 0-4.66 1.97-4.66 4.39 0 1.44.32 2.77.93 3.85.58 1.06 1 1.55 1.76 2.31.2.2.2.51 0 .71-.09.1-.22.17-.34.17zm7.39-4.88c-.28 0-.5-.22-.5-.5 0-2.49-2.02-4.51-4.51-4.51s-4.51 2.02-4.51 4.51c0 .28-.22.5-.5.5s-.5-.22-.5-.5c0-3.04 2.47-5.51 5.51-5.51s5.51 2.47 5.51 5.51c0 .28-.22.5-.5.5z"/></svg>
+            </div>
+            <h2 class="step-title">Biometric Enrollment — Scan 1 of 2</h2>
+            <p class="step-subtitle">Place your finger on the optical sensor and hold it steady</p>
+
+            <button class="btn-touch-action green" id="btn-sfp1-simulate" onclick="handleSignupFp1Proceed()">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 15l-5-5 1.41-1.41L11 14.17l7.59-7.59L20 8l-9 9z"/></svg>
+              <span>👆 TOUCH TO CAPTURE SCAN 1 & CONTINUE →</span>
+            </button>
+
+            <div id="sfp1-done-box" style="display:none; margin-top:14px;">
+              <span class="badge-card-uid">✓ Scan 1 Captured! Lift finger off sensor</span>
+            </div>
+          </div>
+
+          <div class="page-footer-nav">
+            <button class="btn-nav btn-nav-back" onclick="goToPage('page-signup-info')">
+              ← Back to Details
+            </button>
+            <div class="prompt-marquee">📢 <strong>Track 11</strong>: Place finger on sensor. Hold steady.</div>
+            <button class="btn-nav btn-nav-next green" id="btn-sfp1-next" onclick="handleSignupFp1Proceed()">
+              Next: Scan 2 →
+            </button>
+          </div>
+        </div>
+
+        <!-- ========================================================
+             PAGE 3D: SIGN UP STEP 4 — FINGERPRINT SCAN 2/2
+             ======================================================== -->
+        <div class="page" id="page-signup-fp2">
+          <div class="step-page-content">
+            <div class="step-hero-icon green" id="sfp2-icon" onclick="handleSignupFp2Proceed()" style="cursor:pointer;" title="Touch to capture scan 2">
+              <svg viewBox="0 0 24 24"><path d="M17.81 4.47c-.08 0-.16-.02-.23-.06C15.66 3.42 14 3 12.01 3c-1.98 0-3.86.47-5.57 1.41-.24.13-.54.04-.68-.2-.13-.24-.04-.55.2-.68C7.82 2.52 9.86 2 12.01 2c2.13 0 3.99.47 6.03 1.52.25.13.34.43.21.67-.09.18-.26.28-.44.28zM3.5 9.72c-.1 0-.2-.03-.29-.09-.23-.16-.28-.47-.12-.7.99-1.4 2.25-2.5 3.75-3.27C9.9 4.04 14 4.03 17.15 5.65c1.5.77 2.76 1.86 3.75 3.25.16.22.11.54-.12.7-.23.16-.54.11-.7-.12-.9-1.26-2.04-2.25-3.39-2.94-2.87-1.47-6.54-1.47-9.4 0-1.36.7-2.5 1.7-3.4 2.96-.08.14-.23.22-.39.22zm6.25 12.07c-.13 0-.26-.05-.35-.15-.87-.87-1.34-1.43-2.01-2.64-.69-1.23-1.05-2.73-1.05-4.34 0-2.97 2.54-5.39 5.66-5.39s5.66 2.42 5.66 5.39c0 .28-.22.5-.5.5s-.5-.22-.5-.5c0-2.42-2.09-4.39-4.66-4.39-2.57 0-4.66 1.97-4.66 4.39 0 1.44.32 2.77.93 3.85.58 1.06 1 1.55 1.76 2.31.2.2.2.51 0 .71-.09.1-.22.17-.34.17zm7.39-4.88c-.28 0-.5-.22-.5-.5 0-2.49-2.02-4.51-4.51-4.51s-4.51 2.02-4.51 4.51c0 .28-.22.5-.5.5s-.5-.22-.5-.5c0-3.04 2.47-5.51 5.51-5.51s5.51 2.47 5.51 5.51c0 .28-.22.5-.5.5z"/></svg>
+            </div>
+            <h2 class="step-title">Biometric Enrollment — Scan 2 of 2</h2>
+            <p class="step-subtitle">Place the SAME finger again to confirm and store model</p>
+
+            <button class="btn-touch-action green" id="btn-sfp2-simulate" onclick="handleSignupFp2Proceed()">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 15l-5-5 1.41-1.41L11 14.17l7.59-7.59L20 8l-9 9z"/></svg>
+              <span>👆 TOUCH SENSOR FOR SCAN 2 & COMPLETE REGISTRATION →</span>
+            </button>
+
+            <div id="sfp2-done-box" style="display:none; margin-top:14px;">
+              <span class="badge-card-uid">✓ Enrollment Complete! Fingerprint Linked</span>
+              <div style="font-size:14px; font-weight:800; color:var(--text-main); margin-top:4px;">Welcome to MediBot, Emma Watson!</div>
+            </div>
+          </div>
+
+          <div class="page-footer-nav">
+            <button class="btn-nav btn-nav-back" onclick="goToPage('page-signup-fp1')">
+              ← Back to Scan 1
+            </button>
+            <div class="prompt-marquee">📢 <strong>Track 13</strong>: Place same finger again. Hold steady.</div>
+            <button class="btn-nav btn-nav-next green" id="btn-sfp2-finish" onclick="handleSignupFp2Proceed()">
+              Finish & Open Dashboard →
+            </button>
+          </div>
+        </div>
+
+        <!-- ========================================================
+             PAGE 4: ANALYTICS & VITALS DASHBOARD
+             ======================================================== -->
+        <div class="page" id="page-analytics">
+          <div class="analytics-layout">
+            <!-- Left: Speedometer Gauge (Touch to Cycle BMI Demo) -->
+            <div class="card-speedometer" onclick="cycleBmi()" style="cursor:pointer;" title="Touch to cycle simulated BMI values">
+              <div class="card-header-row">
+                <span class="card-h3">Body Mass Index (BMI)</span>
+                <span class="bmi-pill" id="bmi-badge-pill">NORMAL</span>
+              </div>
+
+              <div class="speedo-wrap">
+                <svg class="speedo-svg" viewBox="0 0 250 150">
+                  <path d="M 25,125 A 100,100 0 0,1 64.6,54.4" fill="none" stroke="#06b6d4" stroke-width="18" stroke-linecap="round" />
+                  <path d="M 69,50 A 100,100 0 0,1 181,50" fill="none" stroke="#10b981" stroke-width="18" />
+                  <path d="M 185.4,54.4 A 100,100 0 0,1 225,125" fill="none" stroke="#ef4444" stroke-width="18" stroke-linecap="round" />
+                  <circle cx="125" cy="125" r="10" fill="var(--needle)" />
+                  <circle cx="125" cy="125" r="5" fill="var(--gauge-plate)" />
+                  <g class="speedo-needle" id="gauge-needle" style="transform: rotate(0deg);">
+                    <polygon points="121,125 125,35 129,125" fill="var(--needle)" filter="drop-shadow(0 0 4px rgba(0,0,0,0.5))" />
+                  </g>
+                </svg>
+
+                <div class="speedo-center-val">
+                  <div class="speedo-num" id="bmi-display-val">22.4</div>
+                  <div class="speedo-cat" id="bmi-cat-display">HEALTHY WEIGHT</div>
+                </div>
+              </div>
+
+              <div class="speedo-legend">
+                <span>&lt;18.5 Under</span>
+                <span>18.5 - 24.9 Normal</span>
+                <span>&gt;25.0 Obese</span>
+              </div>
+
+              <div class="speedo-subgrid">
+                <div class="subgrid-box">
+                  <div class="subgrid-lbl">WEIGHT</div>
+                  <div class="subgrid-val" id="bmi-weight-val">68.5 kg</div>
+                </div>
+                <div class="subgrid-box">
+                  <div class="subgrid-lbl">HEIGHT</div>
+                  <div class="subgrid-val" id="bmi-height-val">1.75 m</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Right: 4 Interactive Vitals Cards -->
+            <div class="vitals-grid">
+              <div class="vital-card" id="card-vital-hr" onclick="cycleVital('hr')" style="--card-accent: #f43f5e; cursor:pointer;" title="Touch to cycle Heart Rate">
+                <div class="vital-top">
+                  <span class="vital-name">Heart Rate</span>
+                  <span class="vital-badge-tag" style="color:#f43f5e;">Resting</span>
+                </div>
+                <div class="vital-val-row">
+                  <span class="vital-number" id="val-hr">72</span>
+                  <span class="vital-unit-text">BPM</span>
+                </div>
+                <canvas class="vital-sparkline-canvas" id="ecg-canvas"></canvas>
+              </div>
+
+              <div class="vital-card" id="card-vital-spo2" onclick="cycleVital('spo2')" style="--card-accent: #0ea5e9; cursor:pointer;" title="Touch to cycle SpO2">
+                <div class="vital-top">
+                  <span class="vital-name">Blood Oxygen (SpO2)</span>
+                  <span class="vital-badge-tag" style="color:#0ea5e9;">SpO2</span>
+                </div>
+                <div class="vital-val-row">
+                  <span class="vital-number" id="val-spo2">98.5</span>
+                  <span class="vital-unit-text">%</span>
+                </div>
+                <canvas class="vital-sparkline-canvas" id="spo2-canvas"></canvas>
+              </div>
+
+              <div class="vital-card" id="card-vital-temp" onclick="cycleVital('temp')" style="--card-accent: #eab308; cursor:pointer;" title="Touch to cycle Body Temp">
+                <div class="vital-top">
+                  <span class="vital-name">Body Temperature</span>
+                  <span class="vital-badge-tag" style="color:#eab308;">Normal</span>
+                </div>
+                <div class="vital-val-row">
+                  <span class="vital-number" id="val-temp">36.6</span>
+                  <span class="vital-unit-text">°C</span>
+                </div>
+                <canvas class="vital-sparkline-canvas" id="temp-canvas"></canvas>
+              </div>
+
+              <div class="vital-card" id="card-vital-bp" style="--card-accent: #8b5cf6;" title="Blood Pressure (Manual Input Section)">
+                <div class="vital-top">
+                  <div style="display:flex; align-items:center; gap:6px;">
+                    <span class="vital-name">Blood Pressure</span>
+                    <button class="bp-pill-btn" onclick="openBpModal(event)" title="Open Manual Blood Pressure Keypad">
+                      ✏️ Manual Input
+                    </button>
+                  </div>
+                  <span class="vital-badge-tag" id="bp-badge-tag" style="color:#8b5cf6;">Optimal</span>
+                </div>
+                <div class="vital-val-row" style="cursor:pointer;" onclick="openBpModal(event)" title="Touch to edit Blood Pressure">
+                  <span class="vital-number" id="val-bp"><span id="val-bp-sys">120</span>/<span id="val-bp-dia">80</span></span>
+                  <span class="vital-unit-text">mmHg</span>
+                </div>
+                <!-- In-card quick stepper adjustment section -->
+                <div class="bp-quick-bar">
+                  <div class="bp-quick-item">
+                    <span>SYS</span>
+                    <button class="bp-stepper-btn" onclick="adjustBp('sys', -2, event)" title="Decrease Systolic">▼</button>
+                    <strong id="dash-sys-num">120</strong>
+                    <button class="bp-stepper-btn" onclick="adjustBp('sys', 2, event)" title="Increase Systolic">▲</button>
+                  </div>
+                  <div style="color:var(--border-color); font-size:11px;">|</div>
+                  <div class="bp-quick-item">
+                    <span>DIA</span>
+                    <button class="bp-stepper-btn" onclick="adjustBp('dia', -2, event)" title="Decrease Diastolic">▼</button>
+                    <strong id="dash-dia-num">80</strong>
+                    <button class="bp-stepper-btn" onclick="adjustBp('dia', 2, event)" title="Increase Diastolic">▲</button>
+                  </div>
+                </div>
+                <div style="font-size:9.5px; color:var(--text-dim); margin-top:2px; display:flex; justify-content:space-between;">
+                  <span>External cuff reading</span>
+                  <span style="color:var(--purple); font-weight:700;">Manual input</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="page-footer-nav">
+            <button class="btn-nav btn-nav-back" onclick="handleCancelBack()">
+              🚪 Logout
+            </button>
+            <div style="display:flex; gap:8px;">
+              <button class="btn-nav btn-nav-next" onclick="triggerMeasurementModal()">
+                🩺 Take Measurements (Read)
+              </button>
+              <button class="btn-nav btn-nav-next green" onclick="triggerSaveReadings()">
+                💾 Save to Cloud
+              </button>
+            </div>
+            <button class="btn-nav btn-nav-next" onclick="goToPage('page-profile')">
+              View History Trends →
+            </button>
+          </div>
+        </div>
+
+        <!-- ========================================================
+             PAGE 5: PROFILE & HISTORICAL TRENDS
+             ======================================================== -->
+        <div class="page" id="page-profile">
+          <div class="profile-layout">
+            <div class="profile-sidebar">
+              <div>
+                <div class="profile-avatar-circle" id="profile-avatar-text">SJ</div>
+                <div class="profile-h2" id="profile-name-text">Sarah Jenkins</div>
+                <div class="profile-med-tag" id="profile-id-text">ID: MB-94021</div>
+              </div>
+              <div class="profile-demolist">
+                <div>
+                  <div class="pitem-lbl">AGE</div>
+                  <div class="pitem-val" id="pdemo-age">28 yrs</div>
+                </div>
+                <div>
+                  <div class="pitem-lbl">GENDER</div>
+                  <div class="pitem-val" id="pdemo-gender">Female</div>
+                </div>
+                <div>
+                  <div class="pitem-lbl">WEIGHT</div>
+                  <div class="pitem-val" id="pdemo-wt">68.5 kg</div>
+                </div>
+                <div>
+                  <div class="pitem-lbl">HEIGHT</div>
+                  <div class="pitem-val" id="pdemo-ht">1.75 m</div>
+                </div>
+              </div>
+              <button class="btn-nav btn-nav-back" style="width:100%; justify-content:center;" onclick="handleCancelBack()">
+                End Session
+              </button>
+            </div>
+
+            <div class="profile-chart-card">
+              <div class="chart-header">
+                <div>
+                  <div style="font-size:14px; font-weight:800; color:var(--text-main);">Longitudinal BMI History</div>
+                  <div style="font-size:11px; color:var(--text-muted);">Historical records synced from Firebase Cloud</div>
+                </div>
+                <span class="bmi-pill">↓ 1.2 pts (Improving)</span>
+              </div>
+              <div class="chart-canvas-box">
+                <canvas id="spline-chart-canvas" style="width:100%; height:100%; display:block;"></canvas>
+              </div>
+              <div style="display:flex; justify-content:space-between; align-items:center; background:var(--card-sub-bg); padding:6px 12px; border-radius:8px; border:1px solid var(--border-sub);">
+                <span style="font-size:11px; color:var(--text-muted);">Status: <strong style="color:var(--green);">Target Healthy Zone</strong></span>
+                <span style="font-size:11px; color:var(--text-muted);">6 Visits Recorded</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="page-footer-nav">
+            <button class="btn-nav btn-nav-back" onclick="goToPage('page-analytics')">
+              ← Return to Vitals Dashboard
+            </button>
+            <div class="prompt-marquee">📢 <strong>Track 22</strong>: Health records retrieved from cloud.</div>
+            <button class="btn-nav btn-nav-back" onclick="handleCancelBack()">
+              🚪 Logout
+            </button>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Guided Measurement Modal -->
+      <div class="modal-overlay" id="measure-modal">
+        <div class="modal-card" style="max-width:460px;">
+          <div class="modal-pulse-icon" id="mmodal-icon">
+            <svg viewBox="0 0 24 24"><path d="M12 2c-5.33 4.55-8 8.48-8 11.8 0 4.98 3.8 8.2 8 8.2s8-3.22 8-8.2c0-3.32-2.67-7.25-8-11.8z"/></svg>
+          </div>
+          <div class="modal-title" id="mmodal-title">Step 1/4: Weight Measurement</div>
+          <div class="modal-sub" id="mmodal-sub">Stand still on scale while weight & height are acquired (Track 17)</div>
+          
+          <div class="modal-bar-wrap" id="mmodal-bar-wrap">
+            <div class="modal-bar-fill" id="mmodal-bar" style="width:25%;"></div>
+          </div>
+
+          <!-- Step 4 Manual Blood Pressure Entry Container (Revealed after step 3) -->
+          <div id="mmodal-bp-section" style="display:none; width:100%; margin-top:8px;">
+            <div class="bp-cat-banner" id="mmodal-bp-badge" style="margin-bottom:6px; padding:4px 8px;">
+              <span>❤️</span>
+              <span id="mmodal-bp-badge-text">Optimal Blood Pressure (120/80 mmHg)</span>
+            </div>
+
+            <div class="bp-preset-chips" style="margin-bottom:6px;">
+              <span class="bp-chip" onclick="setBpMeasurePreset(115, 75)">115/75 Normal</span>
+              <span class="bp-chip" onclick="setBpMeasurePreset(120, 80)">120/80 Optimal</span>
+              <span class="bp-chip" onclick="setBpMeasurePreset(130, 85)">130/85 Elevated</span>
+              <span class="bp-chip" onclick="setBpMeasurePreset(142, 92)">142/92 Stage 1</span>
+            </div>
+
+            <div class="bp-modal-grid" style="margin:4px 0 8px;">
+              <div class="bp-col-box" style="padding:6px;">
+                <div class="bp-col-title" style="font-size:10px;">Systolic (SYS)</div>
+                <div class="bp-col-val" id="mmodal-sys-val" style="font-size:26px; margin:2px 0;">120</div>
+                <div class="bp-col-unit">mmHg</div>
+                <div class="bp-btn-stepper-row" style="gap:4px; margin-top:4px;">
+                  <button class="bp-step-action" onclick="nudgeBpMeasure('sys', -2)" style="padding:3px 8px;">-2</button>
+                  <button class="bp-step-action" onclick="nudgeBpMeasure('sys', 2)" style="padding:3px 8px;">+2</button>
+                </div>
+              </div>
+
+              <div class="bp-col-box" style="padding:6px;">
+                <div class="bp-col-title" style="font-size:10px;">Diastolic (DIA)</div>
+                <div class="bp-col-val" id="mmodal-dia-val" style="font-size:26px; margin:2px 0;">80</div>
+                <div class="bp-col-unit">mmHg</div>
+                <div class="bp-btn-stepper-row" style="gap:4px; margin-top:4px;">
+                  <button class="bp-step-action" onclick="nudgeBpMeasure('dia', -2)" style="padding:3px 8px;">-2</button>
+                  <button class="bp-step-action" onclick="nudgeBpMeasure('dia', 2)" style="padding:3px 8px;">+2</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Bottom Action Buttons -->
+          <div id="mmodal-actions" style="display:flex; justify-content:center; gap:8px; margin-top:8px;">
+            <button class="btn-nav btn-nav-back" id="mmodal-btn-cancel" onclick="closeMeasurementModal()" style="font-size:11px; padding:6px 12px;">
+              Cancel Measurement
+            </button>
+            <button class="btn-nav btn-nav-next green" id="mmodal-btn-confirm" onclick="finishMeasurementWithBp()" style="display:none; font-size:11px; padding:6px 14px;">
+              ✅ Confirm Vitals & Display on Dashboard
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Dedicated Standalone Blood Pressure Modal (Direct from Dashboard) -->
+      <div class="modal-overlay" id="bp-input-modal">
+        <div class="modal-card" style="max-width:440px;">
+          <div class="modal-pulse-icon" style="background:rgba(139,92,246,0.15); color:#a78bfa;">
+            <svg viewBox="0 0 24 24"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
+          </div>
+          <div class="modal-title" style="font-size:16px;">Manual Blood Pressure Keypad</div>
+          <div class="modal-sub" style="font-size:11px; margin-bottom:6px;">Kiosk has no automated cuff • Enter reading from external sphygmomanometer</div>
+
+          <!-- Live AHA Classification Badge -->
+          <div class="bp-cat-banner" id="modal-bp-badge">
+            <span>❤️</span>
+            <span id="modal-bp-badge-text">Optimal Blood Pressure</span>
+          </div>
+
+          <!-- Quick Presets -->
+          <div class="bp-preset-chips">
+            <span class="bp-chip" onclick="setBpPreset(115, 75)">115 / 75 Normal</span>
+            <span class="bp-chip" onclick="setBpPreset(120, 80)">120 / 80 Optimal</span>
+            <span class="bp-chip" onclick="setBpPreset(130, 85)">130 / 85 Elevated</span>
+            <span class="bp-chip" onclick="setBpPreset(142, 92)">142 / 92 Stage 1</span>
+          </div>
+
+          <!-- Systolic & Diastolic Two-Column Adjuster -->
+          <div class="bp-modal-grid">
+            <div class="bp-col-box">
+              <div class="bp-col-title">Systolic (SYS)</div>
+              <div class="bp-col-val" id="modal-bp-sys">120</div>
+              <div class="bp-col-unit">mmHg</div>
+              <div class="bp-btn-stepper-row">
+                <button class="bp-step-action" onclick="nudgeBpModal('sys', -10)">-10</button>
+                <button class="bp-step-action" onclick="nudgeBpModal('sys', -2)">-2</button>
+                <button class="bp-step-action" onclick="nudgeBpModal('sys', 2)">+2</button>
+                <button class="bp-step-action" onclick="nudgeBpModal('sys', 10)">+10</button>
+              </div>
+            </div>
+
+            <div class="bp-col-box">
+              <div class="bp-col-title">Diastolic (DIA)</div>
+              <div class="bp-col-val" id="modal-bp-dia">80</div>
+              <div class="bp-col-unit">mmHg</div>
+              <div class="bp-btn-stepper-row">
+                <button class="bp-step-action" onclick="nudgeBpModal('dia', -10)">-10</button>
+                <button class="bp-step-action" onclick="nudgeBpModal('dia', -2)">-2</button>
+                <button class="bp-step-action" onclick="nudgeBpModal('dia', 2)">+2</button>
+                <button class="bp-step-action" onclick="nudgeBpModal('dia', 10)">+10</button>
+              </div>
+            </div>
+          </div>
+
+          <div style="display:flex; justify-content:center; gap:10px; margin-top:8px;">
+            <button class="btn-nav btn-nav-back" onclick="closeBpModal()" style="font-size:11px; padding:6px 12px;">
+              Cancel
+            </button>
+            <button class="btn-nav btn-nav-next green" onclick="saveBpFromModal()" style="font-size:11px; padding:6px 14px;">
+              ✓ Apply to Dashboard
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Floating Embedded Kiosk Toast Notification -->
+      <div class="kiosk-toast" id="kiosk-toast">
+        <span class="toast-icon">✓</span>
+        <span class="toast-msg" id="kiosk-toast-msg">Action Completed</span>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Hardware & UART Testing Panel (Below Screen) -->
+  <div class="debug-dock">
+    <div>
+      <div class="debug-title">
+        <span>UART Line Terminal (115200 Baud)</span>
+        <button class="sim-btn" style="padding:1px 6px; font-size:10px;" onclick="clearTerm()">Clear</button>
+      </div>
+      <div class="term-box" id="uart-term">
+        <div class="term-sys">[SYS] Display Booted. Native ESP-IDF Touch Protocol Active.</div>
+        <div class="term-tx">&gt;&gt; DISPLAY_READY</div>
+        <div class="term-rx">&lt;&lt; {"type":"SYSTEM_STATUS","ready":true,"wifi_connected":true}</div>
+      </div>
+    </div>
+
+    <div>
+      <div class="debug-title">
+        <span>Quick Navigation Shortcuts (All 10 Screen States)</span>
+      </div>
+      <div class="test-btn-grid" style="grid-template-columns: repeat(5, 1fr);">
+        <button class="btn-quick-test" onclick="goToPage('page-boot')">
+          ⚙️ 0. Boot Check
+          <span>page-boot</span>
+        </button>
+        <button class="btn-quick-test" onclick="goToPage('page-idle')">
+          🏠 1. Standby Home
+          <span>page-idle</span>
+        </button>
+        <button class="btn-quick-test" onclick="goToPage('page-login-card')">
+          💳 2A. Login Card
+          <span>page-login-card</span>
+        </button>
+        <button class="btn-quick-test" onclick="goToPage('page-login-fp')">
+          👆 2B. Login Biometrics
+          <span>page-login-fp</span>
+        </button>
+        <button class="btn-quick-test" onclick="goToPage('page-signup-card')">
+          📝 3A. Signup Card
+          <span>page-signup-card</span>
+        </button>
+        <button class="btn-quick-test" onclick="goToPage('page-signup-info')">
+          📋 3B. Signup Info
+          <span>page-signup-info</span>
+        </button>
+        <button class="btn-quick-test" onclick="goToPage('page-signup-fp1')">
+          👆 3C. Signup Scan 1
+          <span>page-signup-fp1</span>
+        </button>
+        <button class="btn-quick-test" onclick="goToPage('page-signup-fp2')">
+          👆 3D. Signup Scan 2
+          <span>page-signup-fp2</span>
+        </button>
+        <button class="btn-quick-test" onclick="goToPage('page-analytics')">
+          📊 4. Dashboard
+          <span>page-analytics</span>
+        </button>
+        <button class="btn-quick-test" onclick="goToPage('page-profile')">
+          📈 5. History Trends
+          <span>page-profile</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- SCRIPT ENGINE -->
+  <script>
+    // State Store
+    let activePatient = {
+      name: "Sarah Jenkins",
+      id: "MB-94021",
+      bmi: 22.4,
+      wt: 68.5,
+      ht: 1.75,
+      age: "28 yrs",
+      gender: "Female",
+      bpSys: 120,
+      bpDia: 80
+    };
+
+    let tempBpSys = 120;
+    let tempBpDia = 80;
+    let measureBpSys = 120;
+    let measureBpDia = 80;
+
+    let bootTimer = null;
+    let isBooting = false;
+    let measurementTimer = null;
+    let audioCtx = null;
+    let toastTimeout = null;
+
+    // =========================================================
+    // BOOT & SELF-CHECK SUBSYSTEM ANIMATION
+    // =========================================================
+    function startBootSequence() {
+      if (bootTimer) clearTimeout(bootTimer);
+      isBooting = true;
+      playTouchBeep('click');
+
+      const fill = document.getElementById('boot-bar-fill');
+      const pct = document.getElementById('boot-pct-text');
+      const task = document.getElementById('boot-task-text');
+      const marquee = document.getElementById('boot-marquee');
+      const btnProceed = document.getElementById('btn-boot-proceed');
+
+      const core = document.getElementById('boot-status-core');
+      const wifi = document.getElementById('boot-status-wifi');
+      const cloud = document.getElementById('boot-status-cloud');
+      const sensors = document.getElementById('boot-status-sensors');
+
+      if (!fill || !pct || !task) return;
+
+      // Reset state
+      fill.style.width = '0%';
+      pct.textContent = '0%';
+      task.textContent = 'Power-on Self-Test (POST)...';
+      if (marquee) marquee.innerHTML = '📢 <strong>Booting System...</strong> Subsystems initializing.';
+      if (btnProceed) {
+        btnProceed.style.opacity = '0.7';
+        btnProceed.textContent = 'Enter Standby Screen →';
+      }
+
+      core.className = 'boot-pill running';
+      core.textContent = 'STARTING...';
+      wifi.className = 'boot-pill pending';
+      wifi.textContent = 'PENDING';
+      cloud.className = 'boot-pill pending';
+      cloud.textContent = 'PENDING';
+      sensors.className = 'boot-pill pending';
+      sensors.textContent = 'PENDING';
+
+      logUartSys("Boot sequence initiated. Clock: 240MHz. Flash: 16MB. PSRAM: 8MB.");
+      logUartTx("BOOT_SELF_CHECK");
+
+      // Step 1: ESP32-S3 Core & PSRAM (25%)
+      bootTimer = setTimeout(() => {
+        playTouchBeep('click');
+        fill.style.width = '25%';
+        pct.textContent = '25%';
+        task.textContent = 'ESP32-S3 Core OK. Connecting Wi-Fi Station...';
+        core.className = 'boot-pill';
+        core.textContent = '✓ 240MHz OK';
+
+        wifi.className = 'boot-pill running';
+        wifi.textContent = 'CONNECTING...';
+        logUartRx('{"type":"BOOT_OK","core":"ESP32-S3","psram_kb":8192,"octal_mode":true}');
+        logUartTx("WIFI_CONNECT");
+
+        // Step 2: Wi-Fi Station Handshake (55%)
+        bootTimer = setTimeout(() => {
+          playTouchBeep('click');
+          fill.style.width = '55%';
+          pct.textContent = '55%';
+          task.textContent = 'Wi-Fi Associated. Authenticating Firebase Realtime Database...';
+          wifi.className = 'boot-pill';
+          wifi.textContent = '✓ 192.168.1.142';
+
+          cloud.className = 'boot-pill running';
+          cloud.textContent = 'CONNECTING...';
+          logUartRx('{"type":"WIFI_OK","ssid":"MediBot_Clinic_Net","ip":"192.168.1.142","rssi":-54}');
+          logUartTx("FIREBASE_SSL_SYNC");
+
+          // Step 3: Firebase Database SSL Sync (80%)
+          bootTimer = setTimeout(() => {
+            playTouchBeep('click');
+            fill.style.width = '80%';
+            pct.textContent = '80%';
+            task.textContent = 'Cloud Database Connected. Calibrating Sensors...';
+            cloud.className = 'boot-pill';
+            cloud.textContent = '✓ SYNCHRONIZED';
+
+            sensors.className = 'boot-pill running';
+            sensors.textContent = 'CALIBRATING...';
+            logUartRx('{"type":"FIREBASE_OK","connected":true,"ssl_verified":true}');
+            logUartTx("CALIBRATE_SENSORS");
+
+            // Step 4: Medical Sensors Calibrated (100%)
+            bootTimer = setTimeout(() => {
+              playTouchBeep('success');
+              fill.style.width = '100%';
+              pct.textContent = '100%';
+              task.textContent = '✓ Self-Check Complete! All Subsystems Ready';
+              sensors.className = 'boot-pill';
+              sensors.textContent = '✓ READY';
+
+              logUartRx('{"type":"SENSORS_OK","max30102":true,"rc522":true,"as608":true,"hx711":true}');
+              logUartTx("DISPLAY_READY");
+
+              if (marquee) marquee.innerHTML = '📢 <strong>System Ready</strong> • All 4 Subsystems Operational • Track 03';
+              if (btnProceed) {
+                btnProceed.style.opacity = '1';
+                btnProceed.textContent = 'Enter Standby Screen →';
+              }
+              showKioskToast("✅ All Hardware & Cloud Services Operational!");
+              isBooting = false;
+            }, 800);
+          }, 800);
+        }, 800);
+      }, 700);
+    }
+
+    // Audio-Haptic Touch Synthesizer (Zero asset dependencies)
+    function playTouchBeep(type = 'click') {
+      try {
+        if (!audioCtx) {
+          audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        }
+        if (audioCtx.state === 'suspended') {
+          audioCtx.resume();
+        }
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+
+        if (type === 'success') {
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(784, audioCtx.currentTime); // G5
+          osc.frequency.exponentialRampToValueAtTime(1046.5, audioCtx.currentTime + 0.09); // C6
+          gain.gain.setValueAtTime(0.09, audioCtx.currentTime);
+          gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.11);
+          osc.start();
+          osc.stop(audioCtx.currentTime + 0.11);
+        } else if (type === 'nav') {
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(659.25, audioCtx.currentTime); // E5
+          gain.gain.setValueAtTime(0.06, audioCtx.currentTime);
+          gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.06);
+          osc.start();
+          osc.stop(audioCtx.currentTime + 0.06);
+        } else {
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(523.25, audioCtx.currentTime); // C5
+          gain.gain.setValueAtTime(0.05, audioCtx.currentTime);
+          gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.04);
+          osc.start();
+          osc.stop(audioCtx.currentTime + 0.04);
+        }
+      } catch (e) {}
+    }
+
+    // Embedded Kiosk Toast Notification
+    function showKioskToast(msg, isSuccess = true) {
+      const toast = document.getElementById('kiosk-toast');
+      const msgEl = document.getElementById('kiosk-toast-msg');
+      if (!toast || !msgEl) return;
+      msgEl.textContent = msg;
+      toast.style.borderColor = isSuccess ? 'var(--green)' : 'var(--blue)';
+      toast.classList.add('show');
+      clearTimeout(toastTimeout);
+      toastTimeout = setTimeout(() => {
+        toast.classList.remove('show');
+      }, 2400);
+    }
+
+    // Page Navigation Router
+    function goToPage(pageId) {
+      playTouchBeep('nav');
+      document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+      const target = document.getElementById(pageId);
+      if (target) {
+        target.classList.add('active');
+      }
+      logUartTx("PAGE_NAV -> " + pageId);
+
+      if (pageId === 'page-boot') {
+        startBootSequence();
+      } else if (pageId === 'page-analytics') {
+        updateSpeedometer(activePatient.bmi);
+        updateBpDisplay();
+      } else if (pageId === 'page-profile') {
+        drawSplineChart();
+      }
+    }
+
+    // Home Attract Screen Actions
+    function handleStartLoginClick() {
+      playTouchBeep('click');
+      logUartTx("START_LOGIN");
+      logUartRx('{"type":"PROMPT","message":"Login selected. Please scan your RFID card."}');
+      goToPage('page-login-card');
+    }
+
+    function handleStartSignupClick() {
+      playTouchBeep('click');
+      logUartTx("START_ENROLLMENT");
+      logUartRx('{"type":"PROMPT","message":"Enrollment selected. Scan RFID card to register."}');
+      goToPage('page-signup-card');
+    }
+
+    function handleCancelBack() {
+      playTouchBeep('nav');
+      logUartTx("BACK");
+      logUartRx('{"type":"PROMPT","message":"Cancelled. Return to Standby."}');
+      goToPage('page-idle');
+    }
+
+    // =========================================================
+    // TOUCHSCREEN WIZARD FLOW ACTIONS (Always clickable & advances)
+    // =========================================================
+
+    // Login Step 1: Scan RFID Card -> advances to Login Step 2 (Fingerprint)
+    function handleLoginCardProceed() {
+      playTouchBeep('click');
+      logUartSys("MFRC522: RFID UID A1B2C3D4 Matched in Flash DB.");
+      logUartRx('{"type":"PROMPT","message":"Card verified. Please verify fingerprint."}');
+      
+      const btn = document.getElementById('btn-login-simulate-card');
+      if (btn) {
+        btn.className = 'btn-touch-action verified';
+        btn.innerHTML = `<span>✓ CARD SCANNED: UID A1B2C3D4 (Sarah Jenkins)</span>`;
+      }
+      const matchedBox = document.getElementById('login-card-matched-box');
+      if (matchedBox) matchedBox.style.display = 'block';
+
+      showKioskToast("✓ RFID Card A1B2C3D4 Verified: Sarah Jenkins");
+      goToPage('page-login-fp');
+    }
+
+    // Login Step 2: Biometric Fingerprint -> advances to Dashboard
+    function handleLoginFpProceed() {
+      playTouchBeep('success');
+      logUartSys("AS608 Fingerprint Scanner: Match Score 99.4% (Template ID #1)");
+      logUartRx('{"type":"FINGERPRINT_SUCCESS","message":"Authentication successful!"}');
+      showKioskToast("✓ Identity Confirmed: Welcome back, Sarah Jenkins!");
+      handleEnterDashboard('Sarah Jenkins', 'MB-94021', 22.4, 68.5, 1.75);
+    }
+
+    // Signup Step 1: Assign RFID Card -> advances to Demographics Form
+    function handleSignupCardProceed() {
+      playTouchBeep('click');
+      logUartSys("MFRC522: New RFID Card UID 33A4B5C6 Available for Pairing.");
+      logUartRx('{"type":"PROMPT","message":"Card registered. Prepare patient details."}');
+      
+      const btn = document.getElementById('btn-signup-simulate-card');
+      if (btn) {
+        btn.className = 'btn-touch-action green verified';
+        btn.innerHTML = `<span>✓ CARD UID 33A4B5C6 ASSIGNED (MB-94025)</span>`;
+      }
+      const assignedBox = document.getElementById('signup-card-assigned-box');
+      if (assignedBox) assignedBox.style.display = 'block';
+
+      showKioskToast("✓ Card UID 33A4B5C6 Assigned: ID MB-94025");
+      goToPage('page-signup-info');
+    }
+
+    // Signup Step 2: Demographics Form -> advances to Scan 1 of 2
+    function handleSignupInfoProceed() {
+      playTouchBeep('click');
+      const name = document.getElementById('reg-name').value || "Emma Watson";
+      const age = document.getElementById('reg-age').value || "22";
+      const gender = document.getElementById('reg-gender').value || "Female";
+      
+      logUartTx("SAVE_DEMOGRAPHICS: " + JSON.stringify({ name, age, gender }));
+      logUartRx('{"type":"PROMPT","message":"Demographics saved. Proceed to fingerprint enrollment."}');
+      
+      showKioskToast(`✓ Patient ${name} Saved. Ready for Biometrics`);
+      goToPage('page-signup-fp1');
+    }
+
+    // Signup Step 3: Biometric Scan 1/2 -> advances to Scan 2 of 2
+    function handleSignupFp1Proceed() {
+      playTouchBeep('click');
+      logUartSys("AS608: Capture 1/2 Buffer OK.");
+      logUartRx('{"type":"PROMPT","message":"Scan 1 captured. Place same finger again for Scan 2."}');
+      
+      const btn = document.getElementById('btn-sfp1-simulate');
+      if (btn) {
+        btn.className = 'btn-touch-action green verified';
+        btn.innerHTML = `<span>✓ FIRST SCAN CAPTURED</span>`;
+      }
+      const sfp1Box = document.getElementById('sfp1-done-box');
+      if (sfp1Box) sfp1Box.style.display = 'block';
+
+      showKioskToast("✓ Scan 1 Captured: Place same finger again for Scan 2");
+      goToPage('page-signup-fp2');
+    }
+
+    // Signup Step 4: Biometric Scan 2/2 -> advances to Dashboard
+    function handleSignupFp2Proceed() {
+      playTouchBeep('success');
+      logUartSys("AS608: Capture 2/2 Validated. Model Stored at ID #2.");
+      logUartRx('{"type":"FP_ENROLL_DONE","fp_id":2}');
+      
+      const name = document.getElementById('reg-name').value || "Emma Watson";
+      const medId = document.getElementById('reg-med-id').value || "MB-94025";
+      
+      const btn = document.getElementById('btn-sfp2-simulate');
+      if (btn) {
+        btn.className = 'btn-touch-action green verified';
+        btn.innerHTML = `<span>✓ BIOMETRIC ENROLLMENT COMPLETE</span>`;
+      }
+      const sfp2Box = document.getElementById('sfp2-done-box');
+      if (sfp2Box) sfp2Box.style.display = 'block';
+
+      showKioskToast(`✓ Registration Complete: Welcome to MediBot, ${name}!`);
+      handleEnterDashboard(name, medId, 18.4, 52.0, 1.68);
+    }
+
+    // =========================================================
+    // ENTER DASHBOARD ROUTING
+    // =========================================================
+    function handleEnterDashboard(name, medId, bmi, wt, ht) {
+      activePatient.name = name;
+      activePatient.id = medId;
+      activePatient.bmi = bmi;
+      activePatient.wt = wt;
+      activePatient.ht = ht;
+
+      if (name.includes("Emma")) {
+        activePatient.age = "22 yrs";
+        activePatient.gender = "Female";
+      } else {
+        activePatient.age = "28 yrs";
+        activePatient.gender = "Female";
+      }
+
+      logUartRx(JSON.stringify({
+        type: "USER_DATA",
+        user_name: activePatient.name,
+        user_medical_id: activePatient.id,
+        user_age: activePatient.age,
+        user_gender: activePatient.gender
+      }));
+
+      // Update Profile elements
+      document.getElementById('profile-name-text').textContent = activePatient.name;
+      document.getElementById('profile-id-text').textContent = "ID: " + activePatient.id;
+      document.getElementById('pdemo-age').textContent = activePatient.age;
+      document.getElementById('pdemo-gender').textContent = activePatient.gender;
+      document.getElementById('pdemo-wt').textContent = activePatient.wt.toFixed(1) + " kg";
+      document.getElementById('pdemo-ht').textContent = activePatient.ht.toFixed(2) + " m";
+      document.getElementById('profile-avatar-text').textContent = activePatient.name.split(" ").map(w=>w[0]).join("");
+
+      // Update Dashboard elements
+      document.getElementById('bmi-weight-val').textContent = activePatient.wt.toFixed(1) + " kg";
+      document.getElementById('bmi-height-val').textContent = activePatient.ht.toFixed(2) + " m";
+
+      goToPage('page-analytics');
+    }
+
+    // =========================================================
+    // SPEEDOMETER GAUGE & BMI CYCLING
+    // =========================================================
+    const bmiPresets = [
+      { bmi: 22.4, wt: 68.5, ht: 1.75 },
+      { bmi: 28.2, wt: 86.4, ht: 1.75 },
+      { bmi: 17.5, wt: 53.6, ht: 1.75 }
+    ];
+    let bmiIdx = 0;
+
+    function cycleBmi() {
+      playTouchBeep('click');
+      bmiIdx = (bmiIdx + 1) % bmiPresets.length;
+      const cur = bmiPresets[bmiIdx];
+      activePatient.bmi = cur.bmi;
+      activePatient.wt = cur.wt;
+      activePatient.ht = cur.ht;
+      
+      document.getElementById('bmi-weight-val').textContent = cur.wt.toFixed(1) + " kg";
+      document.getElementById('bmi-height-val').textContent = cur.ht.toFixed(2) + " m";
+      document.getElementById('pdemo-wt').textContent = cur.wt.toFixed(1) + " kg";
+      document.getElementById('pdemo-ht').textContent = cur.ht.toFixed(2) + " m";
+      
+      updateSpeedometer(cur.bmi);
+      logUartTx(`BMI_CYCLE -> ${cur.bmi.toFixed(1)}`);
+      showKioskToast(`BMI Test: ${cur.bmi.toFixed(1)} (${cur.bmi < 18.5 ? 'Underweight' : cur.bmi <= 24.9 ? 'Healthy Normal' : 'Overweight'})`);
+    }
+
+    function updateSpeedometer(bmi) {
+      document.getElementById('bmi-display-val').textContent = bmi.toFixed(1);
+
+      let clamped = Math.max(10, Math.min(40, bmi));
+      let angle = ((clamped - 10) / (40 - 10)) * 180 - 90;
+      document.getElementById('gauge-needle').style.transform = `rotate(${angle}deg)`;
+
+      const pill = document.getElementById('bmi-badge-pill');
+      const cat = document.getElementById('bmi-cat-display');
+
+      if (bmi < 18.5) {
+        pill.textContent = "UNDERWEIGHT";
+        pill.style.color = "#06b6d4";
+        pill.style.borderColor = "#06b6d4";
+        cat.textContent = "UNDERWEIGHT";
+        cat.style.color = "#06b6d4";
+      } else if (bmi <= 24.9) {
+        pill.textContent = "NORMAL";
+        pill.style.color = "var(--green)";
+        pill.style.borderColor = "var(--green)";
+        cat.textContent = "HEALTHY WEIGHT";
+        cat.style.color = "var(--green)";
+      } else {
+        pill.textContent = "OVERWEIGHT";
+        pill.style.color = "#ef4444";
+        pill.style.borderColor = "#ef4444";
+        cat.textContent = "OVERWEIGHT";
+        cat.style.color = "#ef4444";
+      }
+    }
+
+    // =========================================================
+    // BLOOD PRESSURE CLASSIFICATION & MANUAL INPUT ENGINE
+    // =========================================================
+    function getBpClassification(sys, dia) {
+      if (sys >= 180 || dia >= 120) {
+        return { label: "Crisis", color: "#ef4444", bg: "rgba(239,68,68,0.18)", border: "#ef4444" };
+      } else if (sys >= 140 || dia >= 90) {
+        return { label: "Stage 2 HTN", color: "#f97316", bg: "rgba(249,115,22,0.18)", border: "#f97316" };
+      } else if (sys >= 130 || dia >= 80) {
+        return { label: "Stage 1 HTN", color: "#eab308", bg: "rgba(234,179,8,0.18)", border: "#eab308" };
+      } else if (sys >= 120 && dia < 80) {
+        return { label: "Elevated", color: "#38bdf8", bg: "rgba(56,189,248,0.18)", border: "#38bdf8" };
+      } else {
+        return { label: "Optimal", color: "#10b981", bg: "rgba(16,185,129,0.18)", border: "#10b981" };
+      }
+    }
+
+    function updateBpDisplay() {
+      // Clamp values
+      activePatient.bpSys = Math.max(70, Math.min(240, Math.round(activePatient.bpSys)));
+      activePatient.bpDia = Math.max(40, Math.min(150, Math.round(activePatient.bpDia)));
+
+      const sysEl = document.getElementById('val-bp-sys');
+      const diaEl = document.getElementById('val-bp-dia');
+      const valBpEl = document.getElementById('val-bp');
+      if (sysEl && diaEl) {
+        sysEl.textContent = activePatient.bpSys;
+        diaEl.textContent = activePatient.bpDia;
+      } else if (valBpEl) {
+        valBpEl.textContent = `${activePatient.bpSys}/${activePatient.bpDia}`;
+      }
+
+      const dashSys = document.getElementById('dash-sys-num');
+      const dashDia = document.getElementById('dash-dia-num');
+      if (dashSys) dashSys.textContent = activePatient.bpSys;
+      if (dashDia) dashDia.textContent = activePatient.bpDia;
+
+      const cls = getBpClassification(activePatient.bpSys, activePatient.bpDia);
+      const tag = document.getElementById('bp-badge-tag');
+      if (tag) {
+        tag.textContent = cls.label;
+        tag.style.color = cls.color;
+      }
+    }
+
+    function adjustBp(type, delta, event) {
+      if (event) event.stopPropagation();
+      if (type === 'sys') {
+        activePatient.bpSys += delta;
+      } else if (type === 'dia') {
+        activePatient.bpDia += delta;
+      }
+      updateBpDisplay();
+      playTouchBeep('click');
+      logUartTx("SET_MANUAL_BP: " + JSON.stringify({ systolic: activePatient.bpSys, diastolic: activePatient.bpDia }));
+    }
+
+    // Standalone BP Modal Handlers (Invoked from Dashboard)
+    function openBpModal(event) {
+      if (event) event.stopPropagation();
+      playTouchBeep('nav');
+      tempBpSys = activePatient.bpSys;
+      tempBpDia = activePatient.bpDia;
+      syncBpModalView();
+      document.getElementById('bp-input-modal').classList.add('active');
+    }
+
+    function closeBpModal() {
+      playTouchBeep('nav');
+      document.getElementById('bp-input-modal').classList.remove('active');
+    }
+
+    function syncBpModalView() {
+      document.getElementById('modal-bp-sys').textContent = tempBpSys;
+      document.getElementById('modal-bp-dia').textContent = tempBpDia;
+      const cls = getBpClassification(tempBpSys, tempBpDia);
+      const badge = document.getElementById('modal-bp-badge');
+      const badgeText = document.getElementById('modal-bp-badge-text');
+      if (badge && badgeText) {
+        badge.style.color = cls.color;
+        badge.style.borderColor = cls.border;
+        badge.style.background = cls.bg;
+        badgeText.textContent = `${cls.label} Blood Pressure (${tempBpSys}/${tempBpDia} mmHg)`;
+      }
+    }
+
+    function nudgeBpModal(type, delta) {
+      playTouchBeep('click');
+      if (type === 'sys') {
+        tempBpSys = Math.max(70, Math.min(240, tempBpSys + delta));
+      } else if (type === 'dia') {
+        tempBpDia = Math.max(40, Math.min(150, tempBpDia + delta));
+      }
+      syncBpModalView();
+    }
+
+    function setBpPreset(sys, dia) {
+      playTouchBeep('click');
+      tempBpSys = sys;
+      tempBpDia = dia;
+      syncBpModalView();
+    }
+
+    function saveBpFromModal() {
+      playTouchBeep('success');
+      activePatient.bpSys = tempBpSys;
+      activePatient.bpDia = tempBpDia;
+      updateBpDisplay();
+      closeBpModal();
+      showKioskToast(`✓ Blood Pressure Set: ${activePatient.bpSys}/${activePatient.bpDia} mmHg`);
+      logUartTx("MANUAL_BP_INPUT: " + JSON.stringify({ systolic: activePatient.bpSys, diastolic: activePatient.bpDia }));
+      logUartRx('{"type":"BP_ACCEPTED","systolic":' + activePatient.bpSys + ',"diastolic":' + activePatient.bpDia + ',"unit":"mmHg"}');
+    }
+
+    // Step 4 in Measurement Modal Handlers
+    function syncBpMeasureView() {
+      document.getElementById('mmodal-sys-val').textContent = measureBpSys;
+      document.getElementById('mmodal-dia-val').textContent = measureBpDia;
+      const cls = getBpClassification(measureBpSys, measureBpDia);
+      const badge = document.getElementById('mmodal-bp-badge');
+      const badgeText = document.getElementById('mmodal-bp-badge-text');
+      if (badge && badgeText) {
+        badge.style.color = cls.color;
+        badge.style.borderColor = cls.border;
+        badge.style.background = cls.bg;
+        badgeText.textContent = `${cls.label} Blood Pressure (${measureBpSys}/${measureBpDia} mmHg)`;
+      }
+    }
+
+    function nudgeBpMeasure(type, delta) {
+      playTouchBeep('click');
+      if (type === 'sys') {
+        measureBpSys = Math.max(70, Math.min(240, measureBpSys + delta));
+      } else if (type === 'dia') {
+        measureBpDia = Math.max(40, Math.min(150, measureBpDia + delta));
+      }
+      syncBpMeasureView();
+    }
+
+    function setBpMeasurePreset(sys, dia) {
+      playTouchBeep('click');
+      measureBpSys = sys;
+      measureBpDia = dia;
+      syncBpMeasureView();
+    }
+
+    function finishMeasurementWithBp() {
+      playTouchBeep('success');
+      activePatient.bpSys = measureBpSys;
+      activePatient.bpDia = measureBpDia;
+      updateBpDisplay();
+
+      // Display all acquired vitals on the dashboard
+      document.getElementById('val-hr').textContent = "74";
+      document.getElementById('val-spo2').textContent = "98.8";
+      document.getElementById('val-temp').textContent = "36.7";
+      document.getElementById('bmi-weight-val').textContent = activePatient.wt.toFixed(1) + " kg";
+      document.getElementById('bmi-height-val').textContent = activePatient.ht.toFixed(2) + " m";
+      updateSpeedometer(activePatient.bmi);
+
+      document.getElementById('measure-modal').classList.remove('active');
+
+      logUartRx(JSON.stringify({
+        type: "MEASUREMENTS_DONE",
+        weight: activePatient.wt,
+        height: activePatient.ht,
+        bmi: activePatient.bmi,
+        heart_rate: 74.0,
+        spo2: 98.8,
+        temperature: 36.7,
+        systolic: activePatient.bpSys,
+        diastolic: activePatient.bpDia
+      }));
+
+      showKioskToast(`✅ Vitals & Blood Pressure (${activePatient.bpSys}/${activePatient.bpDia} mmHg) Updated!`);
+    }
+
+    // =========================================================
+    // INTERACTIVE VITALS CYCLING
+    // =========================================================
+    function cycleVital(type) {
+      playTouchBeep('click');
+      if (type === 'hr') {
+        const valEl = document.getElementById('val-hr');
+        const next = valEl.textContent === "72" ? "78" : valEl.textContent === "78" ? "84" : "72";
+        valEl.textContent = next;
+        showKioskToast(`Heart Rate: ${next} BPM`);
+      } else if (type === 'spo2') {
+        const valEl = document.getElementById('val-spo2');
+        const next = valEl.textContent === "98.5" ? "99.2" : valEl.textContent === "99.2" ? "97.8" : "98.5";
+        valEl.textContent = next;
+        showKioskToast(`Blood Oxygen: ${next}%`);
+      } else if (type === 'temp') {
+        const valEl = document.getElementById('val-temp');
+        const next = valEl.textContent === "36.6" ? "36.9" : valEl.textContent === "36.9" ? "37.2" : "36.6";
+        valEl.textContent = next;
+        showKioskToast(`Body Temperature: ${next}°C`);
+      } else if (type === 'bp') {
+        openBpModal();
+      }
+    }
+
+    // =========================================================
+    // GUIDED MEASUREMENT MODAL (4 STEPS) & CLOUD SAVE
+    // =========================================================
+    function triggerMeasurementModal() {
+      playTouchBeep('nav');
+      logUartTx("READ_MEASUREMENTS");
+      logUartRx('{"type":"PROMPT","message":"Starting measurements. Step on scale."}');
+
+      const modal = document.getElementById('measure-modal');
+      const bar = document.getElementById('mmodal-bar');
+      const title = document.getElementById('mmodal-title');
+      const sub = document.getElementById('mmodal-sub');
+      const bpSection = document.getElementById('mmodal-bp-section');
+      const btnCancel = document.getElementById('mmodal-btn-cancel');
+      const btnConfirm = document.getElementById('mmodal-btn-confirm');
+
+      // Reset to Step 1
+      modal.classList.add('active');
+      bpSection.style.display = 'none';
+      btnConfirm.style.display = 'none';
+      btnCancel.style.display = 'block';
+      btnCancel.textContent = 'Cancel Measurement';
+
+      bar.style.width = '25%';
+      title.textContent = "Step 1/4: Weight Measurement";
+      sub.textContent = "Please stand still on the scale platform (Track 17)";
+
+      measurementTimer = setTimeout(() => {
+        playTouchBeep('click');
+        bar.style.width = '50%';
+        title.textContent = "Step 2/4: Height Scanning";
+        sub.textContent = "Measuring height with laser sensor (Track 18)";
+        logUartRx('{"type":"SCALE_DONE","weight":68.5}');
+
+        measurementTimer = setTimeout(() => {
+          playTouchBeep('click');
+          bar.style.width = '75%';
+          title.textContent = "Step 3/4: Pulse Oximeter & Temp";
+          sub.textContent = "Reading heart rate, SpO2 & infrared temp (Track 19/20)";
+          logUartRx('{"type":"HEIGHT_DONE","height":1.75,"bmi":22.4}');
+
+          measurementTimer = setTimeout(() => {
+            // Transition to Step 4: Manual Blood Pressure Input
+            playTouchBeep('nav');
+            bar.style.width = '100%';
+            title.textContent = "Step 4/4: Manual Blood Pressure Entry";
+            sub.textContent = "Machine sensors complete! Input your external cuff reading below:";
+            logUartRx('{"type":"OXIMETER_DONE","heart_rate":74.0,"spo2":98.8,"temperature":36.7}');
+
+            measureBpSys = activePatient.bpSys;
+            measureBpDia = activePatient.bpDia;
+            syncBpMeasureView();
+
+            bpSection.style.display = 'block';
+            btnConfirm.style.display = 'block';
+            btnCancel.textContent = 'Skip BP Entry';
+          }, 1600);
+        }, 1600);
+      }, 1600);
+    }
+
+    function closeMeasurementModal() {
+      playTouchBeep('nav');
+      clearTimeout(measurementTimer);
+      const bpSection = document.getElementById('mmodal-bp-section');
+      if (bpSection && bpSection.style.display === 'block') {
+        // If in step 4 and user clicks "Skip BP Entry", still apply automated vitals!
+        document.getElementById('val-hr').textContent = "74";
+        document.getElementById('val-spo2').textContent = "98.8";
+        document.getElementById('val-temp').textContent = "36.7";
+        updateSpeedometer(activePatient.bmi);
+        showKioskToast("✅ Sensor Vitals Acquired (Blood Pressure skipped)");
+      }
+      document.getElementById('measure-modal').classList.remove('active');
+      logUartTx("BACK");
+    }
+
+    function triggerSaveReadings() {
+      playTouchBeep('success');
+      const payload = {
+        patient: activePatient.name,
+        medical_id: activePatient.id,
+        weight: activePatient.wt,
+        height: activePatient.ht,
+        bmi: activePatient.bmi,
+        heart_rate: parseFloat(document.getElementById('val-hr').textContent) || 74,
+        spo2: parseFloat(document.getElementById('val-spo2').textContent) || 98.8,
+        temp: parseFloat(document.getElementById('val-temp').textContent) || 36.7,
+        systolic: activePatient.bpSys,
+        diastolic: activePatient.bpDia
+      };
+      logUartTx("SAVE_READINGS: " + JSON.stringify(payload));
+      logUartRx('{"type":"FIREBASE_WRITE","status":"SUCCESS","record_id":"REC_88492","synced":true}');
+      showKioskToast(`✅ Vitals & BP (${activePatient.bpSys}/${activePatient.bpDia}) Saved to Cloud!`);
+    }
+
+    // =========================================================
+    // SPLINE CHART & ANIMATIONS
+    // =========================================================
+    function drawSplineChart() {
+      const canvas = document.getElementById('spline-chart-canvas');
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      canvas.width = canvas.clientWidth;
+      canvas.height = canvas.clientHeight;
+
+      const dates = ["Nov 12", "Dec 05", "Jan 18", "Feb 10", "Mar 01", "Today"];
+      const bmis = [24.8, 24.2, 23.6, 23.1, 22.8, activePatient.bmi];
+      const minBmi = 18.0;
+      const maxBmi = 26.0;
+
+      const w = canvas.width;
+      const h = canvas.height;
+      const pL = 36, pR = 16, pT = 16, pB = 26;
+
+      ctx.clearRect(0, 0, w, h);
+
+      // Shaded Healthy Zone
+      const y24_9 = pT + (1 - (24.9 - minBmi) / (maxBmi - minBmi)) * (h - pT - pB);
+      const y18_5 = pT + (1 - (18.5 - minBmi) / (maxBmi - minBmi)) * (h - pT - pB);
+      ctx.fillStyle = 'rgba(16, 185, 129, 0.1)';
+      ctx.fillRect(pL, y24_9, w - pL - pR, y18_5 - y24_9);
+
+      // Grid
+      ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+      for (let b = 18; b <= 26; b += 2) {
+        let y = pT + (1 - (b - minBmi) / (maxBmi - minBmi)) * (h - pT - pB);
+        ctx.beginPath();
+        ctx.moveTo(pL, y);
+        ctx.lineTo(w - pR, y);
+        ctx.stroke();
+
+        ctx.fillStyle = '#64748b';
+        ctx.font = '10px monospace';
+        ctx.fillText(b.toFixed(0), 8, y + 3);
+      }
+
+      // Points
+      let pts = [];
+      const stepX = (w - pL - pR) / (bmis.length - 1);
+      for (let i = 0; i < bmis.length; i++) {
+        let x = pL + i * stepX;
+        let y = pT + (1 - (bmis[i] - minBmi) / (maxBmi - minBmi)) * (h - pT - pB);
+        pts.push({ x, y, bmi: bmis[i], date: dates[i] });
+      }
+
+      // Spline curve
+      ctx.beginPath();
+      ctx.strokeStyle = '#0284c7';
+      ctx.lineWidth = 3;
+      ctx.moveTo(pts[0].x, pts[0].y);
+      for (let i = 0; i < pts.length - 1; i++) {
+        const xc = (pts[i].x + pts[i + 1].x) / 2;
+        const yc = (pts[i].y + pts[i + 1].y) / 2;
+        ctx.quadraticCurveTo(pts[i].x, pts[i].y, xc, yc);
+      }
+      ctx.lineTo(pts[pts.length - 1].x, pts[pts.length - 1].y);
+      ctx.stroke();
+
+      for (let pt of pts) {
+        ctx.beginPath();
+        ctx.arc(pt.x, pt.y, 4, 0, Math.PI * 2);
+        ctx.fillStyle = '#0284c7';
+        ctx.fill();
+        ctx.strokeStyle = '#ffffff';
+        ctx.stroke();
+
+        ctx.fillStyle = '#94a3b8';
+        ctx.font = '10px sans-serif';
+        ctx.fillText(pt.date, pt.x - 14, h - 8);
+      }
+    }
+
+    function initSparklines() {
+      // ECG Canvas
+      const ecg = document.getElementById('ecg-canvas');
+      if (ecg) {
+        const ctx = ecg.getContext('2d');
+        ecg.width = ecg.clientWidth;
+        ecg.height = ecg.clientHeight;
+        let x = 0;
+        let pts = [];
+        const pattern = [0, 0, 2, -2, 0, 7, -18, 22, -5, 0, 2, 0];
+        let pIdx = 0;
+
+        function draw() {
+          ctx.clearRect(0, 0, ecg.width, ecg.height);
+          ctx.beginPath();
+          ctx.strokeStyle = '#f43f5e';
+          ctx.lineWidth = 2;
+          for (let i = 0; i < pts.length; i++) {
+            if (i === 0) ctx.moveTo(pts[i].x, pts[i].y);
+            else ctx.lineTo(pts[i].x, pts[i].y);
+          }
+          ctx.stroke();
+
+          let y = ecg.height / 2 + (pattern[pIdx % pattern.length] || 0);
+          pts.push({ x, y });
+          if (pts.length > 45) pts.shift();
+          for (let p of pts) p.x -= 3;
+          x += 3;
+          if (x > ecg.width) x = ecg.width;
+          pIdx++;
+          requestAnimationFrame(draw);
+        }
+        draw();
+      }
+
+      // SpO2 Canvas
+      const spo2 = document.getElementById('spo2-canvas');
+      if (spo2) {
+        const ctx = spo2.getContext('2d');
+        spo2.width = spo2.clientWidth;
+        spo2.height = spo2.clientHeight;
+        let offset = 0;
+        function drawSpo2() {
+          ctx.clearRect(0, 0, spo2.width, spo2.height);
+          ctx.beginPath();
+          ctx.strokeStyle = '#0ea5e9';
+          ctx.lineWidth = 2;
+          for (let px = 0; px < spo2.width; px += 2) {
+            let py = spo2.height / 2 + Math.sin((px + offset) * 0.08) * 7;
+            if (px === 0) ctx.moveTo(px, py);
+            else ctx.lineTo(px, py);
+          }
+          ctx.stroke();
+          offset += 2;
+          requestAnimationFrame(drawSpo2);
+        }
+        drawSpo2();
+      }
+
+      // Temp Canvas
+      const temp = document.getElementById('temp-canvas');
+      if (temp) {
+        const ctx = temp.getContext('2d');
+        temp.width = temp.clientWidth;
+        temp.height = temp.clientHeight;
+        ctx.strokeStyle = '#eab308';
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([3, 2]);
+        ctx.beginPath();
+        ctx.moveTo(0, temp.height / 2);
+        ctx.lineTo(temp.width, temp.height / 2);
+        ctx.stroke();
+      }
+    }
+
+    // Terminal Logger
+    function logUartTx(cmd) {
+      const term = document.getElementById('uart-term');
+      const div = document.createElement('div');
+      div.className = 'term-tx';
+      div.textContent = '>> ' + cmd;
+      term.appendChild(div);
+      term.scrollTop = term.scrollHeight;
+    }
+    function logUartRx(jsonStr) {
+      const term = document.getElementById('uart-term');
+      const div = document.createElement('div');
+      div.className = 'term-rx';
+      div.textContent = '<< ' + jsonStr;
+      term.appendChild(div);
+      term.scrollTop = term.scrollHeight;
+    }
+    function logUartSys(msg) {
+      const term = document.getElementById('uart-term');
+      const div = document.createElement('div');
+      div.className = 'term-sys';
+      div.textContent = '[SYS] ' + msg;
+      term.appendChild(div);
+      term.scrollTop = term.scrollHeight;
+    }
+    function clearTerm() {
+      document.getElementById('uart-term').innerHTML = '';
+    }
+
+    // Theme Engine
+    function toggleTheme() {
+      const html = document.documentElement;
+      const cur = html.getAttribute('data-theme') || 'dark';
+      const next = cur === 'dark' ? 'light' : 'dark';
+      html.setAttribute('data-theme', next);
+
+      document.getElementById('theme-btn-text').textContent = next === 'light' ? '🌙 Dark Mode' : '☀️ Light Mode';
+      drawSplineChart();
+    }
+
+    function updateClock() {
+      const now = new Date();
+      let hours = now.getHours();
+      const minutes = String(now.getMinutes()).padStart(2, '0');
+      const ampm = hours >= 12 ? 'PM' : 'AM';
+      hours = hours % 12 || 12;
+      document.getElementById('clock-display').textContent = `${hours}:${minutes} ${ampm}`;
+    }
+    setInterval(updateClock, 1000);
+    updateClock();
+
+    window.onload = () => {
+      initSparklines();
+      updateBpDisplay();
+      goToPage('page-boot');
+    };
+  </script>
+</body>
+</html>
