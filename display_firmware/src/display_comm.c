@@ -188,8 +188,8 @@ esp_err_t display_comm_init(void) {
     s_tx_queue = xQueueCreate(16, sizeof(uart_tx_msg_t));
 
     // Both UART tasks pinned to Core 0 to leave Core 1 for LVGL rendering
-    xTaskCreatePinnedToCore(uart_rx_task, "uart_rx", 4096, NULL, 5, NULL, 0);
-    xTaskCreatePinnedToCore(uart_tx_task, "uart_tx", 3072, NULL, 5, NULL, 0);
+    xTaskCreatePinnedToCore(uart_rx_task, "uart_rx", 8192, NULL, 5, NULL, 0);
+    xTaskCreatePinnedToCore(uart_tx_task, "uart_tx", 4096, NULL, 5, NULL, 0);
 
     ESP_LOGI(TAG, "Display UART initialized on TX=%d, RX=%d", DISPLAY_UART_TX_PIN, DISPLAY_UART_RX_PIN);
     return ESP_OK;

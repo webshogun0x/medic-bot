@@ -18,14 +18,25 @@
 #include <esp_wifi.h>
 #include <Wire.h>
 #include <Adafruit_VL53L0X.h>
+#include <VL53L0X.h>
+#include <VL53L1X.h>
 #include "height_pins.h"
 #include "espnow_protocol.h"
 
 static const char *TAG = "HEIGHT_NODE";
 
+typedef enum {
+    SENSOR_NONE = 0,
+    SENSOR_POLOLU_L1X,
+    SENSOR_POLOLU_L0X,
+    SENSOR_ADA_L0X
+} vl53_sensor_type_t;
+
 // ===== GLOBAL SENSOR OBJECTS =====
-Adafruit_VL53L0X g_vl53 = Adafruit_VL53L0X();
-static bool g_vl53_detected = false;
+static Adafruit_VL53L0X g_ada_vl53l0x = Adafruit_VL53L0X();
+static VL53L0X g_pololu_vl53;
+static VL53L1X g_pololu_vl53l1x;
+static vl53_sensor_type_t g_sensor_type = SENSOR_NONE;
 
 // Configurable stand geometry (Overhead mount height from platform)
 static float g_stand_height_cm = DEFAULT_STAND_HEIGHT_CM;
@@ -43,36 +54,45 @@ static uint8_t g_active_channel = 1;
 /* =========================================================================
  * Low-Level Ultrasonic Pulse Timing Driver
  * ========================================================================= */
-static float read_sonar_distance_cm(uint8_t trigPin, uint8_t echoPin) {
-    digitalWrite(trigPin, LOW);
-    delayMicroseconds(2);
-    digitalWrite(trigPin, HIGH);
+static float read_sonar_distance_cm(uint8_t pinA, uint8_t pinB) {
+    // Attempt 1: Normal Pin Mapping (pinA = TRIG, pinB = ECHO)
+    pinMode(pinA, OUTPUT);
+    pinMode(pinB, INPUT);
+    digitalWrite(pinA, LOW);
+    delayMicroseconds(4);
+    digitalWrite(pinA, HIGH);
     delayMicroseconds(10);
-    digitalWrite(trigPin, LOW);
+    digitalWrite(pinA, LOW);
 
-    // Wait for Echo to go HIGH (5ms timeout)
-    uint32_t start_wait = micros();
-    while (digitalRead(echoPin) == LOW) {
-        if (micros() - start_wait > 5000) {
-            return -1.0f; // Timeout waiting for pulse start
+    unsigned long duration_us = pulseIn(pinB, HIGH, 30000);
+    if (duration_us > 0) {
+        float dist_cm = (float)duration_us * 0.0343f / 2.0f;
+        if (dist_cm >= MIN_MEASURABLE_DIST_CM && dist_cm <= MAX_MEASURABLE_DIST_CM) {
+            return dist_cm;
         }
     }
 
-    // Measure pulse width while Echo is HIGH (30ms timeout ~ 5 meters)
-    uint32_t pulse_start = micros();
-    while (digitalRead(echoPin) == HIGH) {
-        if (micros() - pulse_start > 30000) {
-            return -1.0f; // Echo pulse timeout
+    // Attempt 2: Swapped Pin Mapping (pinB = TRIG, pinA = ECHO)
+    pinMode(pinB, OUTPUT);
+    pinMode(pinA, INPUT);
+    digitalWrite(pinB, LOW);
+    delayMicroseconds(4);
+    digitalWrite(pinB, HIGH);
+    delayMicroseconds(10);
+    digitalWrite(pinB, LOW);
+
+    duration_us = pulseIn(pinA, HIGH, 30000);
+    if (duration_us > 0) {
+        float dist_cm = (float)duration_us * 0.0343f / 2.0f;
+        if (dist_cm >= MIN_MEASURABLE_DIST_CM && dist_cm <= MAX_MEASURABLE_DIST_CM) {
+            Serial.printf("[AUTO-DETECT] Pins %d & %d are physically SWAPPED! (Swapped Trig=%d, Echo=%d works!)\n", pinA, pinB, pinB, pinA);
+            return dist_cm;
         }
     }
-    uint32_t pulse_end = micros();
 
-    uint32_t duration_us = pulse_end - pulse_start;
-    float distance_cm = (float)duration_us * 0.0343f / 2.0f;
-
-    if (distance_cm >= MIN_MEASURABLE_DIST_CM && distance_cm <= MAX_MEASURABLE_DIST_CM) {
-        return distance_cm;
-    }
+    // Reset back to original pin directions
+    pinMode(pinA, OUTPUT);
+    pinMode(pinB, INPUT);
     return -1.0f;
 }
 
@@ -80,17 +100,37 @@ static float read_sonar_distance_cm(uint8_t trigPin, uint8_t echoPin) {
  * Optical Laser Time-of-Flight (VL53L0X) Driver
  * ========================================================================= */
 static float read_laser_distance_cm() {
-    if (!g_vl53_detected) {
-        return -1.0f;
-    }
-
-    VL53L0X_RangingMeasurementData_t measure;
-    g_vl53.rangingTest(&measure, false);
-
-    if (measure.RangeStatus != 4) { // 4 = out of range
-        float dist_cm = (float)measure.RangeMilliMeter / 10.0f;
-        if (dist_cm >= MIN_MEASURABLE_DIST_CM && dist_cm <= MAX_MEASURABLE_DIST_CM) {
-            return dist_cm;
+    if (g_sensor_type == SENSOR_POLOLU_L1X) {
+        uint16_t dist_mm = g_pololu_vl53l1x.read();
+        if (!g_pololu_vl53l1x.timeoutOccurred()) {
+            float dist_cm = (float)dist_mm / 10.0f;
+            if (dist_cm >= MIN_MEASURABLE_DIST_CM && dist_cm <= MAX_MEASURABLE_DIST_CM) {
+                return dist_cm;
+            }
+        }
+    } else if (g_sensor_type == SENSOR_POLOLU_L0X) {
+        uint16_t dist_mm = g_pololu_vl53.readRangeContinuousMillimeters();
+        if (!g_pololu_vl53.timeoutOccurred()) {
+            float dist_cm = (float)dist_mm / 10.0f;
+            if (dist_cm >= MIN_MEASURABLE_DIST_CM && dist_cm <= MAX_MEASURABLE_DIST_CM) {
+                return dist_cm;
+            }
+        }
+    } else if (g_sensor_type == SENSOR_ADA_L0X) {
+        VL53L0X_RangingMeasurementData_t measure;
+        g_ada_vl53l0x.rangingTest(&measure, false);
+        if (measure.RangeStatus != 4 && measure.RangeMilliMeter > 0) {
+            float dist_cm = (float)measure.RangeMilliMeter / 10.0f;
+            if (dist_cm >= MIN_MEASURABLE_DIST_CM && dist_cm <= MAX_MEASURABLE_DIST_CM) {
+                return dist_cm;
+            }
+        }
+        uint16_t dist_mm = g_ada_vl53l0x.readRangeResult();
+        if (dist_mm > 0 && dist_mm < 8190) {
+            float dist_cm = (float)dist_mm / 10.0f;
+            if (dist_cm >= MIN_MEASURABLE_DIST_CM && dist_cm <= MAX_MEASURABLE_DIST_CM) {
+                return dist_cm;
+            }
         }
     }
     return -1.0f;
@@ -150,6 +190,9 @@ static float measure_patient_height_cm() {
         // Optical Laser ToF (Center Vertex)
         tof_readings[b] = read_laser_distance_cm();
         delay(ACOUSTIC_STAGGER_MS);
+
+        Serial.printf("[%s] Burst %d -> S1(12/13): %.1f | S2(14/27): %.1f | S3(26/25): %.1f | ToF(21/22): %.1f\n",
+                      TAG, b + 1, s1_readings[b], s2_readings[b], s3_readings[b], tof_readings[b]);
     }
 
     // Identify candidate minimum distances (crown of head is closest to overhead mount)
@@ -356,17 +399,72 @@ void setup() {
     Serial.printf("  - Sonar 3 (Patient Right):  Trig=%d, Echo=%d\n", PIN_SONAR3_TRIG, PIN_SONAR3_ECHO);
     Serial.printf("  - Sonar 4 (Gantry Tracker): Trig=%d, Echo=%d\n", PIN_GANTRY_TRIG, PIN_GANTRY_ECHO);
 
-    // 2. Initialize I2C Bus & VL53L0X Laser Sensor
+    // 2. Full I2C Bus Scan & Multi-Driver VL53 Laser Sensor Cascade
+    Serial.println("\n--- FULL I2C BUS SCAN (SDA=21, SCL=22) ---");
     Wire.begin(PIN_I2C_SDA, PIN_I2C_SCL);
-    Wire.setClock(400000); // 400kHz Fast I2C
+    Wire.setClock(100000);
 
-    if (g_vl53.begin()) {
-        g_vl53_detected = true;
-        Serial.printf("[SETUP] VL53L0X Laser ToF Sensor initialized on SDA=%d, SCL=%d\n", PIN_I2C_SDA, PIN_I2C_SCL);
+    bool found_29 = false;
+    for (uint8_t addr = 1; addr < 127; addr++) {
+        Wire.beginTransmission(addr);
+        if (Wire.endTransmission() == 0) {
+            Serial.printf("  [I2C DEVICE FOUND] Active responder at 0x%02X\n", addr);
+            if (addr == 0x29) found_29 = true;
+        }
+    }
+
+    if (found_29) {
+        delay(20);
+        // Print key register values at 0x29 for diagnostic verification
+        Serial.print("  [DIAGNOSTIC] Register Dump at 0x29: ");
+        uint8_t regs[] = {0xC0, 0xC1, 0xC2, 0x51, 0x80, 0x00, 0xAA, 0xEE};
+        for (int r = 0; r < 8; r++) {
+            Wire.beginTransmission(0x29);
+            Wire.write(regs[r]);
+            Wire.endTransmission();
+            Wire.requestFrom((uint8_t)0x29, (uint8_t)1);
+            uint8_t val = Wire.available() ? Wire.read() : 0xFF;
+            Serial.printf("Reg 0x%02X=0x%02X  ", regs[r], val);
+        }
+        Serial.println();
+
+        // Driver Attempt 1: Pololu VL53L1X Driver (For VL53L1X hardware / vl53l0/1xv2 boards)
+        g_pololu_vl53l1x.setBus(&Wire);
+        if (g_pololu_vl53l1x.init()) {
+            g_sensor_type = SENSOR_POLOLU_L1X;
+            g_pololu_vl53l1x.setTimeout(500);
+            g_pololu_vl53l1x.startContinuous(50);
+            Serial.printf("[SETUP] >>> SUCCESS: Pololu VL53L1X Driver initialized on SDA=21, SCL=22! <<<\n");
+        }
+        // Driver Attempt 2: Adafruit VL53L0X Standard Driver
+        else if (g_ada_vl53l0x.begin(VL53L0X_I2C_ADDR, false, &Wire)) {
+            g_sensor_type = SENSOR_ADA_L0X;
+            g_ada_vl53l0x.startRangeContinuous();
+            Serial.printf("[SETUP] >>> SUCCESS: Adafruit VL53L0X Driver initialized on SDA=21, SCL=22! <<<\n");
+        }
+        // Driver Attempt 3: Pololu VL53L0X (2V8 I/O mode true)
+        else {
+            g_pololu_vl53.setBus(&Wire);
+            if (g_pololu_vl53.init(true)) {
+                g_sensor_type = SENSOR_POLOLU_L0X;
+                g_pololu_vl53.setTimeout(500);
+                g_pololu_vl53.startContinuous(33);
+                Serial.printf("[SETUP] >>> SUCCESS: Pololu VL53L0X (2V8 mode) initialized on SDA=21, SCL=22! <<<\n");
+            }
+            // Driver Attempt 4: Pololu VL53L0X (1V8 I/O mode false)
+            else if (g_pololu_vl53.init(false)) {
+                g_sensor_type = SENSOR_POLOLU_L0X;
+                g_pololu_vl53.setTimeout(500);
+                g_pololu_vl53.startContinuous(33);
+                Serial.printf("[SETUP] >>> SUCCESS: Pololu VL53L0X (1V8 mode) initialized on SDA=21, SCL=22! <<<\n");
+            } else {
+                g_sensor_type = SENSOR_NONE;
+                Serial.println("[SETUP] Warning: All VL53 drivers (L0X & L1X) failed to initialize despite address 0x29 ACK.");
+            }
+        }
     } else {
-        g_vl53_detected = false;
-        Serial.printf("[SETUP] Warning: VL53L0X not found on I2C (SDA=%d, SCL=%d). Continuing with 3x ultrasonic array.\n",
-                      PIN_I2C_SDA, PIN_I2C_SCL);
+        g_sensor_type = SENSOR_NONE;
+        Serial.println("[SETUP] Notice: No I2C device detected at address 0x29.");
     }
 
     // 3. Initialize ESP-NOW

@@ -57,7 +57,7 @@ void app_main(void) {
     ui_init();
 
     // 5. Start Boot Progression Watchdog Task
-    xTaskCreatePinnedToCore(boot_progress_task, "boot_seq", 3072, NULL, 3, NULL, 0);
+    xTaskCreatePinnedToCore(boot_progress_task, "boot_seq", 6144, NULL, 3, NULL, 0);
 
     ESP_LOGI(TAG, "Display Firmware Core initialization complete");
 }

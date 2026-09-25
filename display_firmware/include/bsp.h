@@ -41,7 +41,7 @@
 #define BSP_LCD_H_RES              800
 #define BSP_LCD_V_RES              480
 
-// Display Timing Profile (16MHz Dot Clock, Verified Sunton Porch Settings)
+// Display Timing Profile (16MHz Dot Clock, Sunton ESP32-8048S070 Verified Porch Settings)
 #define BSP_LCD_PANEL_TIMING()         \
     (esp_lcd_rgb_timing_t)             \
     {                                  \
@@ -50,7 +50,7 @@
         .v_res = BSP_LCD_V_RES,        \
         .hsync_pulse_width = 30,       \
         .hsync_back_porch = 16,        \
-        .hsync_front_porch = 20,       \
+        .hsync_front_porch = 210,      \
         .vsync_pulse_width = 13,       \
         .vsync_back_porch = 10,        \
         .vsync_front_porch = 22,       \

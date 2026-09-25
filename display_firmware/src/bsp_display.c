@@ -23,7 +23,8 @@ static esp_err_t app_lcd_init(esp_lcd_panel_handle_t *lp) {
         .clk_src = LCD_CLK_SRC_DEFAULT,
         .timings = BSP_LCD_PANEL_TIMING(),
         .data_width = 16,
-        .num_fbs = 2,
+        .num_fbs = 1,
+        .bounce_buffer_size_px = BSP_LCD_H_RES * 10,
         .hsync_gpio_num = BSP_LCD_GPIO_HSYNC,
         .vsync_gpio_num = BSP_LCD_GPIO_VSYNC,
         .de_gpio_num = BSP_LCD_GPIO_DE,
@@ -86,14 +87,14 @@ static esp_err_t app_lvgl_init(esp_lcd_panel_handle_t lp,
 
     const lvgl_port_cfg_t lvgl_cfg = {
         .task_priority = 4,
-        .task_stack = 8192,
+        .task_stack = 16384,
         .task_affinity = 1,        // Pinned to Core 1
         .task_max_sleep_ms = 500,
         .timer_period_ms = 5,
     };
     ESP_RETURN_ON_ERROR(lvgl_port_init(&lvgl_cfg), TAG, "LVGL port init failed");
 
-    uint32_t buff_size = BSP_LCD_H_RES * 40; // 40 lines buffer in PSRAM
+    uint32_t buff_size = BSP_LCD_H_RES * 40; // 40 lines draw buffer in PSRAM
 
     const lvgl_port_display_cfg_t disp_cfg = {
         .panel_handle = lp,
@@ -116,8 +117,8 @@ static esp_err_t app_lvgl_init(esp_lcd_panel_handle_t lp,
 
     const lvgl_port_display_rgb_cfg_t rgb_cfg = {
         .flags = {
-            .bb_mode = false,
-            .avoid_tearing = true,
+            .bb_mode = true,
+            .avoid_tearing = false,
         }
     };
     *lv_disp = lvgl_port_add_disp_rgb(&disp_cfg, &rgb_cfg);

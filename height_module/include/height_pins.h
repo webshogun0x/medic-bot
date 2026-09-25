@@ -13,23 +13,23 @@
  * Patient Height Ultrasonic Array (3-Point Spatial Triangulation)
  * ========================================================================= */
 // Sonar 1 (Left shoulder / head)
-#define PIN_SONAR1_TRIG         12
-#define PIN_SONAR1_ECHO         13
+#define PIN_SONAR1_TRIG         13
+#define PIN_SONAR1_ECHO         12
 
 // Sonar 2 (Center crown / vertex)
-#define PIN_SONAR2_TRIG         14
-#define PIN_SONAR2_ECHO         27
+#define PIN_SONAR2_TRIG         27
+#define PIN_SONAR2_ECHO         14
 
 // Sonar 3 (Right shoulder / head)
-#define PIN_SONAR3_TRIG         26
-#define PIN_SONAR3_ECHO         25
+#define PIN_SONAR3_TRIG         25
+#define PIN_SONAR3_ECHO         26
 
 /* =========================================================================
  * Gantry Carriage Position Tracker
  * ========================================================================= */
 // Sonar 4 (Tracks vertical gantry / forehead carriage height)
-#define PIN_GANTRY_TRIG         33
-#define PIN_GANTRY_ECHO         32
+#define PIN_GANTRY_TRIG         32
+#define PIN_GANTRY_ECHO         33
 
 /* =========================================================================
  * System Geometry & Calibration Constants
