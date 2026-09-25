@@ -38,10 +38,38 @@ static uint8_t rfid_to_slot(const char *rfid) {
     return static_cast<uint8_t>((hash % FP_MAX_SLOTS) + 1);
 }
 
+static const char *get_fp_error_message(uint8_t err_code) {
+    switch (err_code) {
+        case FINGERPRINT_OK:                 return "OK";
+        case FINGERPRINT_PACKETRECIEVEERR:   return "⚠️ Communication Error with Fingerprint Sensor";
+        case FINGERPRINT_IMAGEFAIL:          return "⚠️ Low Image Quality - Press finger firmly on glass";
+        case FINGERPRINT_IMAGEMESS:          return "⚠️ Image Too Blurry - Hold finger still on sensor";
+        case FINGERPRINT_FEATUREFAIL:        return "⚠️ Partial Scan - Position finger flat on center of glass";
+        case FINGERPRINT_NOMATCH:            return "⚠️ Fingerprint Mismatch - No match found";
+        case FINGERPRINT_NOTFOUND:           return "⚠️ Fingerprint Not Found in Sensor Library";
+        case FINGERPRINT_ENROLLMISMATCH:     return "⚠️ Scans Do Not Match - Use the SAME finger for both scans";
+        case FINGERPRINT_BADLOCATION:        return "⚠️ Invalid Memory Location Slot";
+        case FINGERPRINT_TIMEOUT:            return "⚠️ Scanner Timeout - Sensor did not respond in time";
+        default:                             return "⚠️ Fingerprint Scan Failed - Please try again";
+    }
+}
+
 // Fingerprint verification worker (FreeRTOS task) - 3 Trial limit
 static void fp_verify_task(void *arg) {
     uint8_t expected_slot = static_cast<uint8_t>(reinterpret_cast<uintptr_t>(arg));
-    ESP_LOGI(TAG, "FP verification started for expected slot #%d", expected_slot);
+    const user_profile_t &user = getOrchestrator().getCurrentUser();
+    ESP_LOGI(TAG, "FP verification started for expected slot #%d (User: %s)", expected_slot, user.name);
+
+    if (!getFingerprintSensor().isInitialized()) {
+        ESP_LOGE(TAG, "Fingerprint sensor hardware uninitialized!");
+        getDisplay().sendRaw(
+            "{\"type\":\"FINGERPRINT_ERROR\",\"message\":\"⚠️ Fingerprint Sensor Disconnected or Unpowered\"}\n"
+        );
+        s_fp_running = false;
+        s_fp_task = nullptr;
+        vTaskDelete(nullptr);
+        return;
+    }
 
     int max_trials = 3;
     int trial = 1;
@@ -50,15 +78,32 @@ static void fp_verify_task(void *arg) {
     while (trial <= max_trials && !s_fp_abort) {
         ESP_LOGI(TAG, "FP trial %d of %d starting for slot #%d...", trial, max_trials, expected_slot);
 
+        getDisplay().sendRaw(
+            "{\"type\":\"FINGERPRINT_TRIAL\",\"trial\":%d,\"max_trials\":%d,\"message\":\"Trial %d of %d: Place finger on optical scanner pad...\"}\n",
+            trial, max_trials, trial, max_trials
+        );
+
         int timeout_sec = 15;
+        bool finger_detected = false;
 
         while (timeout_sec > 0 && !s_fp_abort) {
-            uint16_t matched_id = 0;
-            uint16_t score = 0;
+            uint8_t img_res = getFingerprintSensor().getImage();
 
-            if (getFingerprintSensor().getImage() == FINGERPRINT_OK) {
-                if (getFingerprintSensor().image2Tz(1) == FINGERPRINT_OK) {
-                    if (getFingerprintSensor().fingerFastSearch(1, matched_id, score) == FINGERPRINT_OK) {
+            if (img_res == FINGERPRINT_OK) {
+                if (!finger_detected) {
+                    finger_detected = true;
+                    getDisplay().sendRaw(
+                        "{\"type\":\"FINGERPRINT_TRIAL\",\"trial\":%d,\"max_trials\":%d,\"message\":\"Finger detected! Analyzing scan...\"}\n",
+                        trial, max_trials
+                    );
+                }
+
+                uint8_t tz_res = getFingerprintSensor().image2Tz(1);
+                if (tz_res == FINGERPRINT_OK) {
+                    uint16_t matched_id = 0;
+                    uint16_t score = 0;
+                    uint8_t search_res = getFingerprintSensor().fingerFastSearch(1, matched_id, score);
+                    if (search_res == FINGERPRINT_OK) {
                         ESP_LOGI(TAG, "FP matched ID #%d (Score: %d) on trial %d", matched_id, score, trial);
                         matched = true;
                         if (g_sys_event_queue) {
@@ -69,11 +114,29 @@ static void fp_verify_task(void *arg) {
                             xQueueSend(g_sys_event_queue, &evt, pdMS_TO_TICKS(50));
                         }
                         break;
+                    } else {
+                        ESP_LOGW(TAG, "Fingerprint scanned but search failed: %d", search_res);
+                        getDisplay().sendRaw(
+                            "{\"type\":\"FINGERPRINT_TRIAL\",\"trial\":%d,\"max_trials\":%d,\"message\":\"%s\"}\n",
+                            trial, max_trials, get_fp_error_message(search_res)
+                        );
                     }
+                } else {
+                    ESP_LOGW(TAG, "image2Tz failed: %d", tz_res);
+                    getDisplay().sendRaw(
+                        "{\"type\":\"FINGERPRINT_TRIAL\",\"trial\":%d,\"max_trials\":%d,\"message\":\"%s\"}\n",
+                        trial, max_trials, get_fp_error_message(tz_res)
+                    );
                 }
-                ESP_LOGW(TAG, "Fingerprint scanned but mismatch on trial %d", trial);
                 break;
+            } else if (img_res != FINGERPRINT_NOFINGER) {
+                ESP_LOGW(TAG, "getImage error: %d", img_res);
+                getDisplay().sendRaw(
+                    "{\"type\":\"FINGERPRINT_TRIAL\",\"trial\":%d,\"max_trials\":%d,\"message\":\"%s\"}\n",
+                    trial, max_trials, get_fp_error_message(img_res)
+                );
             }
+
             vTaskDelay(pdMS_TO_TICKS(300));
             timeout_sec--;
         }
@@ -83,13 +146,7 @@ static void fp_verify_task(void *arg) {
         }
 
         if (trial < max_trials) {
-            char buf[128];
-            snprintf(buf, sizeof(buf), "Trial %d of %d Failed. Please try again.", trial, max_trials);
-            getDisplay().sendRaw(
-                "{\"type\":\"FINGERPRINT_TRIAL\",\"trial\":%d,\"max_trials\":%d,\"message\":\"%s\"}\n",
-                trial, max_trials, buf
-            );
-            vTaskDelay(pdMS_TO_TICKS(1500));
+            vTaskDelay(pdMS_TO_TICKS(1200));
         } else {
             getDisplay().sendRaw(
                 "{\"type\":\"FINGERPRINT_FAILED_FINAL\",\"trial\":3,\"max_trials\":3,\"message\":\"3 Failed Attempts. Returning to Standby...\"}\n"
@@ -116,21 +173,66 @@ static void fp_verify_task(void *arg) {
 // Fingerprint enrollment worker (2-step capture FreeRTOS task)
 static void fp_enroll_task(void *arg) {
     uint8_t slot_id = static_cast<uint8_t>(reinterpret_cast<uintptr_t>(arg));
-    ESP_LOGI(TAG, "FP enrollment task started for slot #%d", slot_id);
+    const user_profile_t &user = getOrchestrator().getCurrentUser();
+    ESP_LOGI(TAG, "FP enrollment task started for slot #%d (User: %s)", slot_id, user.name);
+
+    if (!getFingerprintSensor().isInitialized()) {
+        ESP_LOGE(TAG, "Fingerprint sensor hardware uninitialized!");
+        getDisplay().sendRaw(
+            "{\"type\":\"ENROLL_STATUS\",\"step\":1,\"status\":\"ERROR\",\"message\":\"⚠️ Fingerprint Sensor Disconnected or Unpowered!\",\"user_name\":\"%s\",\"user_medical_id\":\"%s\"}\n",
+            user.name, user.medical_id
+        );
+        getDisplay().sendRaw("{\"type\":\"ENROLL_FAILED\",\"message\":\"Fingerprint Sensor Hardware Error\"}\n");
+        s_fp_running = false;
+        s_fp_task = nullptr;
+        vTaskDelete(nullptr);
+        return;
+    }
 
     // 1. Send ENROLL_STEP1 to transition display to UI_SCREEN_SIGNUP_FP1
-    getDisplay().sendRaw("{\"type\":\"ENROLL_STEP1\",\"message\":\"Place finger on scanner (Scan 1/2)...\"}\n");
+    getDisplay().sendRaw(
+        "{\"type\":\"ENROLL_STEP1\",\"user_name\":\"%s\",\"user_medical_id\":\"%s\",\"message\":\"Place finger flat on optical scanner pad (Scan 1/2)...\"}\n",
+        user.name, user.medical_id
+    );
 
     // Scan 1 with 30s timeout (100 * 300ms = 30s)
     int timeout = 100;
     bool step1_ok = false;
+    bool finger_detected = false;
+
     while (timeout-- > 0 && !s_fp_abort) {
-        if (getFingerprintSensor().getImage() == FINGERPRINT_OK) {
-            if (getFingerprintSensor().image2Tz(1) == FINGERPRINT_OK) {
-                step1_ok = true;
-                break;
+        uint8_t res = getFingerprintSensor().getImage();
+
+        if (res == FINGERPRINT_OK) {
+            if (!finger_detected) {
+                finger_detected = true;
+                getDisplay().sendRaw(
+                    "{\"type\":\"ENROLL_STATUS\",\"step\":1,\"status\":\"PROCESSING\",\"message\":\"Finger detected! Analyzing scan...\",\"user_name\":\"%s\",\"user_medical_id\":\"%s\"}\n",
+                    user.name, user.medical_id
+                );
             }
+
+            uint8_t tz_res = getFingerprintSensor().image2Tz(1);
+            if (tz_res == FINGERPRINT_OK) {
+                step1_ok = true;
+                getDisplay().sendRaw(
+                    "{\"type\":\"ENROLL_STATUS\",\"step\":1,\"status\":\"SUCCESS\",\"message\":\"✅ Scan 1 Captured! Please remove finger.\",\"user_name\":\"%s\",\"user_medical_id\":\"%s\"}\n",
+                    user.name, user.medical_id
+                );
+                break;
+            } else {
+                getDisplay().sendRaw(
+                    "{\"type\":\"ENROLL_STATUS\",\"step\":1,\"status\":\"WARNING\",\"message\":\"%s\",\"user_name\":\"%s\",\"user_medical_id\":\"%s\"}\n",
+                    get_fp_error_message(tz_res), user.name, user.medical_id
+                );
+            }
+        } else if (res != FINGERPRINT_NOFINGER) {
+            getDisplay().sendRaw(
+                "{\"type\":\"ENROLL_STATUS\",\"step\":1,\"status\":\"WARNING\",\"message\":\"%s\",\"user_name\":\"%s\",\"user_medical_id\":\"%s\"}\n",
+                get_fp_error_message(res), user.name, user.medical_id
+            );
         }
+
         vTaskDelay(pdMS_TO_TICKS(300));
     }
 
@@ -143,22 +245,57 @@ static void fp_enroll_task(void *arg) {
         return;
     }
 
-    getDisplay().sendPrompt("Remove finger...");
-    vTaskDelay(pdMS_TO_TICKS(1500));
+    // Wait for finger removal
+    int remove_timeout = 50;
+    while (getFingerprintSensor().getImage() != FINGERPRINT_NOFINGER && remove_timeout-- > 0 && !s_fp_abort) {
+        vTaskDelay(pdMS_TO_TICKS(100));
+    }
+    vTaskDelay(pdMS_TO_TICKS(500));
 
     // 2. Send ENROLL_STEP2 to transition display to UI_SCREEN_SIGNUP_FP2
-    getDisplay().sendRaw("{\"type\":\"ENROLL_STEP2\",\"message\":\"Place same finger again (Scan 2/2)...\"}\n");
+    getDisplay().sendRaw(
+        "{\"type\":\"ENROLL_STEP2\",\"user_name\":\"%s\",\"user_medical_id\":\"%s\",\"message\":\"Place SAME finger again on scanner (Scan 2/2)...\"}\n",
+        user.name, user.medical_id
+    );
 
     // Scan 2 with 30s timeout
     timeout = 100;
     bool step2_ok = false;
+    finger_detected = false;
+
     while (timeout-- > 0 && !s_fp_abort) {
-        if (getFingerprintSensor().getImage() == FINGERPRINT_OK) {
-            if (getFingerprintSensor().image2Tz(2) == FINGERPRINT_OK) {
-                step2_ok = true;
-                break;
+        uint8_t res = getFingerprintSensor().getImage();
+
+        if (res == FINGERPRINT_OK) {
+            if (!finger_detected) {
+                finger_detected = true;
+                getDisplay().sendRaw(
+                    "{\"type\":\"ENROLL_STATUS\",\"step\":2,\"status\":\"PROCESSING\",\"message\":\"Finger detected! Analyzing scan...\",\"user_name\":\"%s\",\"user_medical_id\":\"%s\"}\n",
+                    user.name, user.medical_id
+                );
             }
+
+            uint8_t tz_res = getFingerprintSensor().image2Tz(2);
+            if (tz_res == FINGERPRINT_OK) {
+                step2_ok = true;
+                getDisplay().sendRaw(
+                    "{\"type\":\"ENROLL_STATUS\",\"step\":2,\"status\":\"SUCCESS\",\"message\":\"✅ Scan 2 Captured!\",\"user_name\":\"%s\",\"user_medical_id\":\"%s\"}\n",
+                    user.name, user.medical_id
+                );
+                break;
+            } else {
+                getDisplay().sendRaw(
+                    "{\"type\":\"ENROLL_STATUS\",\"step\":2,\"status\":\"WARNING\",\"message\":\"%s\",\"user_name\":\"%s\",\"user_medical_id\":\"%s\"}\n",
+                    get_fp_error_message(tz_res), user.name, user.medical_id
+                );
+            }
+        } else if (res != FINGERPRINT_NOFINGER) {
+            getDisplay().sendRaw(
+                "{\"type\":\"ENROLL_STATUS\",\"step\":2,\"status\":\"WARNING\",\"message\":\"%s\",\"user_name\":\"%s\",\"user_medical_id\":\"%s\"}\n",
+                get_fp_error_message(res), user.name, user.medical_id
+            );
         }
+
         vTaskDelay(pdMS_TO_TICKS(300));
     }
 
@@ -172,9 +309,29 @@ static void fp_enroll_task(void *arg) {
     }
 
     // Combine models and store in slot
-    if (getFingerprintSensor().createModel() == FINGERPRINT_OK &&
-        getFingerprintSensor().storeModel(1, slot_id) == FINGERPRINT_OK) {
-        ESP_LOGI(TAG, "Fingerprint enrolled and saved in slot #%d", slot_id);
+    uint8_t model_res = getFingerprintSensor().createModel();
+    if (model_res != FINGERPRINT_OK) {
+        ESP_LOGE(TAG, "Failed to create biometric model: 0x%02X", model_res);
+        getDisplay().sendRaw(
+            "{\"type\":\"ENROLL_STATUS\",\"step\":2,\"status\":\"ERROR\",\"message\":\"%s\",\"user_name\":\"%s\",\"user_medical_id\":\"%s\"}\n",
+            get_fp_error_message(model_res), user.name, user.medical_id
+        );
+        getDisplay().sendRaw("{\"type\":\"ENROLL_FAILED\",\"message\":\"Scans do not match. Enrollment cancelled.\"}\n");
+        if (g_sys_event_queue) {
+            sys_event_t evt;
+            memset(&evt, 0, sizeof(evt));
+            evt.type = EVT_FP_ENROLL_FAILED;
+            xQueueSend(g_sys_event_queue, &evt, pdMS_TO_TICKS(50));
+        }
+        s_fp_running = false;
+        s_fp_task = nullptr;
+        vTaskDelete(nullptr);
+        return;
+    }
+
+    uint8_t store_res = getFingerprintSensor().storeModel(1, slot_id);
+    if (store_res == FINGERPRINT_OK) {
+        ESP_LOGI(TAG, "Fingerprint enrolled and saved in slot #%d for %s", slot_id, user.name);
         getDisplay().sendRaw("{\"type\":\"ENROLL_DONE\",\"message\":\"Biometrics Enrolled Successfully!\"}\n");
         if (g_sys_event_queue) {
             sys_event_t evt;
@@ -184,8 +341,12 @@ static void fp_enroll_task(void *arg) {
             xQueueSend(g_sys_event_queue, &evt, pdMS_TO_TICKS(50));
         }
     } else {
-        ESP_LOGE(TAG, "Failed to create model or store in slot #%d", slot_id);
-        getDisplay().sendRaw("{\"type\":\"ENROLL_FAILED\",\"message\":\"Failed to create or store biometric model\"}\n");
+        ESP_LOGE(TAG, "Failed to store model in slot #%d: 0x%02X", slot_id, store_res);
+        getDisplay().sendRaw(
+            "{\"type\":\"ENROLL_STATUS\",\"step\":2,\"status\":\"ERROR\",\"message\":\"%s\",\"user_name\":\"%s\",\"user_medical_id\":\"%s\"}\n",
+            get_fp_error_message(store_res), user.name, user.medical_id
+        );
+        getDisplay().sendRaw("{\"type\":\"ENROLL_FAILED\",\"message\":\"Failed to save biometric model to sensor\"}\n");
         if (g_sys_event_queue) {
             sys_event_t evt;
             memset(&evt, 0, sizeof(evt));
@@ -273,9 +434,32 @@ void KioskOrchestrator::handleRfidScanned(const char *uid) {
             getCloudSync().queueFetchUser(uid);
         }
     } else if (m_state == OrchestratorState::NEW_USER_ENROLL) {
+        getDisplay().sendRaw("{\"type\":\"CARD_SCANNED\",\"rfid\":\"%s\",\"message\":\"Fetching patient details...\"}\n", uid);
+        vTaskDelay(pdMS_TO_TICKS(300));
+
         strncpy(m_currentUser.rfid_uid, uid, sizeof(m_currentUser.rfid_uid) - 1);
         uint8_t assigned_slot = rfid_to_slot(uid);
         m_currentUser.fingerprint_slot = assigned_slot;
+
+        user_profile_t profile;
+        bool found = getStorage().getUser(uid, profile);
+        if (found) {
+            m_currentUser = profile;
+            m_currentUser.fingerprint_slot = assigned_slot;
+        } else {
+            if (m_currentUser.name[0] == '\0') {
+                snprintf(m_currentUser.name, sizeof(m_currentUser.name), "Patient %s", uid);
+            }
+            if (m_currentUser.medical_id[0] == '\0') {
+                snprintf(m_currentUser.medical_id, sizeof(m_currentUser.medical_id), "MB-%s", uid);
+            }
+            getCloudSync().queueFetchUser(uid);
+        }
+
+        getDisplay().sendRaw(
+            "{\"type\":\"CARD_USER_FOUND\",\"rfid\":\"%s\",\"user_name\":\"%s\",\"user_medical_id\":\"%s\",\"biometric_enrolled\":false}\n",
+            uid, m_currentUser.name, m_currentUser.medical_id
+        );
 
         s_fp_abort = false;
         s_fp_running = true;

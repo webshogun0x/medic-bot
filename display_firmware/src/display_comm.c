@@ -194,20 +194,61 @@ static void parse_json_line(const char *json_str) {
         ui_show_toast(cJSON_IsString(msg) ? msg->valuestring : "Fingerprint error. Try again.");
         display_comm_send_cmd("{\"type\":\"ACK\",\"received\":\"FINGERPRINT_ERROR\"}");
     } else if (strcmp(type, "ENROLL_STEP1") == 0) {
+        cJSON *name = cJSON_GetObjectItem(root, "user_name");
+        cJSON *id = cJSON_GetObjectItem(root, "user_medical_id");
+        cJSON *msg = cJSON_GetObjectItem(root, "message");
+        const char *n = cJSON_IsString(name) ? name->valuestring : g_active_patient.name;
+        const char *i = cJSON_IsString(id) ? id->valuestring : g_active_patient.medical_id;
+        const char *m = cJSON_IsString(msg) ? msg->valuestring : "Scan 1 of 2: Place finger on scanner";
+
+        if (n[0]) strncpy(g_active_patient.name, n, sizeof(g_active_patient.name) - 1);
+        if (i[0]) strncpy(g_active_patient.medical_id, i, sizeof(g_active_patient.medical_id) - 1);
+
         ui_show_screen(UI_SCREEN_SIGNUP_FP1);
-        ui_show_toast("Scan 1 of 2: Place finger on scanner");
+        ui_signup_fp_update_status(1, "INFO", m, n, i);
         display_comm_send_cmd("{\"type\":\"ACK\",\"received\":\"ENROLL_STEP1\"}");
     } else if (strcmp(type, "ENROLL_STEP2") == 0) {
+        cJSON *name = cJSON_GetObjectItem(root, "user_name");
+        cJSON *id = cJSON_GetObjectItem(root, "user_medical_id");
+        cJSON *msg = cJSON_GetObjectItem(root, "message");
+        const char *n = cJSON_IsString(name) ? name->valuestring : g_active_patient.name;
+        const char *i = cJSON_IsString(id) ? id->valuestring : g_active_patient.medical_id;
+        const char *m = cJSON_IsString(msg) ? msg->valuestring : "Scan 2 of 2: Place same finger again";
+
         ui_show_screen(UI_SCREEN_SIGNUP_FP2);
-        ui_show_toast("Scan 2 of 2: Place same finger again");
+        ui_signup_fp_update_status(2, "INFO", m, n, i);
         display_comm_send_cmd("{\"type\":\"ACK\",\"received\":\"ENROLL_STEP2\"}");
+    } else if (strcmp(type, "ENROLL_STATUS") == 0) {
+        cJSON *step = cJSON_GetObjectItem(root, "step");
+        cJSON *stat = cJSON_GetObjectItem(root, "status");
+        cJSON *msg = cJSON_GetObjectItem(root, "message");
+        cJSON *name = cJSON_GetObjectItem(root, "user_name");
+        cJSON *id = cJSON_GetObjectItem(root, "user_medical_id");
+
+        int s = cJSON_IsNumber(step) ? step->valueint : 1;
+        const char *st = cJSON_IsString(stat) ? stat->valuestring : "INFO";
+        const char *m = cJSON_IsString(msg) ? msg->valuestring : "";
+        const char *n = cJSON_IsString(name) ? name->valuestring : g_active_patient.name;
+        const char *i = cJSON_IsString(id) ? id->valuestring : g_active_patient.medical_id;
+
+        if (s == 1) {
+            ui_show_screen(UI_SCREEN_SIGNUP_FP1);
+        } else {
+            ui_show_screen(UI_SCREEN_SIGNUP_FP2);
+        }
+        ui_signup_fp_update_status(s, st, m, n, i);
+        display_comm_send_cmd("{\"type\":\"ACK\",\"received\":\"ENROLL_STATUS\"}");
     } else if (strcmp(type, "ENROLL_DONE") == 0) {
-        ui_show_toast("✅ Biometrics Enrolled! Loading Dashboard...");
+        cJSON *msg = cJSON_GetObjectItem(root, "message");
+        const char *m = cJSON_IsString(msg) ? msg->valuestring : "✅ Biometrics Enrolled! Loading Dashboard...";
+        ui_show_toast(m);
         ui_show_screen(UI_SCREEN_DASHBOARD);
         display_comm_send_cmd("{\"type\":\"ACK\",\"received\":\"ENROLL_DONE\"}");
     } else if (strcmp(type, "ENROLL_FAILED") == 0) {
         cJSON *msg = cJSON_GetObjectItem(root, "message");
-        ui_show_toast(cJSON_IsString(msg) ? msg->valuestring : "❌ Enrollment Failed.");
+        const char *m = cJSON_IsString(msg) ? msg->valuestring : "❌ Enrollment Failed.";
+        ui_show_toast(m);
+        vTaskDelay(pdMS_TO_TICKS(1500));
         ui_show_screen(UI_SCREEN_IDLE);
         display_comm_send_cmd("{\"type\":\"ACK\",\"received\":\"ENROLL_FAILED\"}");
     }

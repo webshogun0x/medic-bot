@@ -83,6 +83,11 @@ void ui_login_card_show_result(const char *rfid_uid, const char *name, const cha
  */
 void ui_login_fp_show_status(const char *name, const char *medical_id, bool registered, int trial, int max_trials, const char *status_msg, bool is_error);
 
+/**
+ * @brief Update enrollment/signup fingerprint status message, color indicator, and patient info header.
+ */
+void ui_signup_fp_update_status(int step, const char *status_type, const char *message, const char *name, const char *medical_id);
+
 #ifdef __cplusplus
 }
 #endif

@@ -2,6 +2,7 @@
 #include "display_comm.h"
 #include "esp_log.h"
 #include <stdio.h>
+#include <string.h>
 
 static const char *TAG = "UI_SCREENS";
 
@@ -46,6 +47,14 @@ static lv_obj_t *s_login_fp_icon = NULL;
 static lv_obj_t *s_login_fp_reg_lbl = NULL;
 static lv_obj_t *s_login_fp_status_lbl = NULL;
 static lv_obj_t *s_login_fp_trial_pills[3] = {NULL, NULL, NULL};
+
+// Signup Fingerprint Widgets
+static lv_obj_t *s_signup_box1 = NULL;
+static lv_obj_t *s_signup_lbl1 = NULL;
+static lv_obj_t *s_signup_patient_lbl1 = NULL;
+static lv_obj_t *s_signup_box2 = NULL;
+static lv_obj_t *s_signup_lbl2 = NULL;
+static lv_obj_t *s_signup_patient_lbl2 = NULL;
 
 // Helper: AHA BP Classification
 static const char *get_bp_category(int sys, int dia, lv_color_t *color) {
@@ -266,6 +275,40 @@ void ui_login_fp_show_status(const char *name, const char *medical_id, bool regi
         }
     }
 
+    lvgl_port_unlock();
+}
+
+void ui_signup_fp_update_status(int step, const char *status_type, const char *message, const char *name, const char *medical_id) {
+    lvgl_port_lock(0);
+    lv_obj_t *box = (step == 1) ? s_signup_box1 : s_signup_box2;
+    lv_obj_t *lbl = (step == 1) ? s_signup_lbl1 : s_signup_lbl2;
+    lv_obj_t *patient_lbl = (step == 1) ? s_signup_patient_lbl1 : s_signup_patient_lbl2;
+
+    if (patient_lbl && name && name[0]) {
+        char buf[128];
+        snprintf(buf, sizeof(buf), "Patient: %s  |  Medical ID: %s", name, (medical_id && medical_id[0]) ? medical_id : "--");
+        lv_label_set_text(patient_lbl, buf);
+    }
+
+    if (box && lbl && message) {
+        lv_label_set_text(lbl, message);
+        if (status_type && strcmp(status_type, "PROCESSING") == 0) {
+            lv_obj_set_style_border_color(box, lv_color_hex(0x0284c7), 0);
+            lv_obj_set_style_text_color(lbl, lv_color_hex(0x0284c7), 0);
+        } else if (status_type && strcmp(status_type, "SUCCESS") == 0) {
+            lv_obj_set_style_border_color(box, lv_color_hex(0x10b981), 0);
+            lv_obj_set_style_text_color(lbl, lv_color_hex(0x10b981), 0);
+        } else if (status_type && strcmp(status_type, "WARNING") == 0) {
+            lv_obj_set_style_border_color(box, lv_color_hex(0xd97706), 0);
+            lv_obj_set_style_text_color(lbl, lv_color_hex(0xd97706), 0);
+        } else if (status_type && strcmp(status_type, "ERROR") == 0) {
+            lv_obj_set_style_border_color(box, lv_color_hex(0xef4444), 0);
+            lv_obj_set_style_text_color(lbl, lv_color_hex(0xef4444), 0);
+        } else {
+            lv_obj_set_style_border_color(box, lv_color_hex(0x64748b), 0);
+            lv_obj_set_style_text_color(lbl, lv_color_hex(0x0f172a), 0);
+        }
+    }
     lvgl_port_unlock();
 }
 
@@ -1053,22 +1096,28 @@ static void create_signup_screens(void) {
     lv_label_set_text(h3, "Scan 1 of 2: Place Finger on Scanner");
     lv_obj_set_style_text_font(h3, &lv_font_montserrat_24, 0);
     lv_obj_set_style_text_color(h3, lv_color_hex(0x0f172a), 0);
-    lv_obj_align(h3, LV_ALIGN_TOP_MID, 0, 70);
+    lv_obj_align(h3, LV_ALIGN_TOP_MID, 0, 65);
 
-    lv_obj_t *card_box3 = lv_obj_create(s_screens[UI_SCREEN_SIGNUP_FP1]);
-    lv_obj_set_size(card_box3, 500, 180);
-    lv_obj_align(card_box3, LV_ALIGN_CENTER, 0, 20);
-    lv_obj_set_style_bg_color(card_box3, lv_color_hex(0xf8fafc), 0);
-    lv_obj_set_style_border_color(card_box3, lv_color_hex(0xd97706), 0);
-    lv_obj_set_style_border_width(card_box3, 2, 0);
-    lv_obj_set_style_radius(card_box3, 14, 0);
+    s_signup_patient_lbl1 = lv_label_create(s_screens[UI_SCREEN_SIGNUP_FP1]);
+    lv_label_set_text(s_signup_patient_lbl1, "Patient: Pending  |  Medical ID: --");
+    lv_obj_set_style_text_font(s_signup_patient_lbl1, &lv_font_montserrat_16, 0);
+    lv_obj_set_style_text_color(s_signup_patient_lbl1, lv_color_hex(0x0284c7), 0);
+    lv_obj_align(s_signup_patient_lbl1, LV_ALIGN_TOP_MID, 0, 95);
 
-    lv_obj_t *icon_fp1 = lv_label_create(card_box3);
-    lv_label_set_text(icon_fp1, LV_SYMBOL_KEYBOARD "  OPTICAL SENSOR ACTIVE\n\nPlace your right index finger flat on the glass");
-    lv_obj_set_style_text_font(icon_fp1, &lv_font_montserrat_16, 0);
-    lv_obj_set_style_text_align(icon_fp1, LV_TEXT_ALIGN_CENTER, 0);
-    lv_obj_set_style_text_color(icon_fp1, lv_color_hex(0xd97706), 0);
-    lv_obj_center(icon_fp1);
+    s_signup_box1 = lv_obj_create(s_screens[UI_SCREEN_SIGNUP_FP1]);
+    lv_obj_set_size(s_signup_box1, 520, 180);
+    lv_obj_align(s_signup_box1, LV_ALIGN_CENTER, 0, 25);
+    lv_obj_set_style_bg_color(s_signup_box1, lv_color_hex(0xf8fafc), 0);
+    lv_obj_set_style_border_color(s_signup_box1, lv_color_hex(0xd97706), 0);
+    lv_obj_set_style_border_width(s_signup_box1, 2, 0);
+    lv_obj_set_style_radius(s_signup_box1, 14, 0);
+
+    s_signup_lbl1 = lv_label_create(s_signup_box1);
+    lv_label_set_text(s_signup_lbl1, LV_SYMBOL_KEYBOARD "  OPTICAL SENSOR ACTIVE\n\nPlace your right index finger flat on the glass");
+    lv_obj_set_style_text_font(s_signup_lbl1, &lv_font_montserrat_16, 0);
+    lv_obj_set_style_text_align(s_signup_lbl1, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_style_text_color(s_signup_lbl1, lv_color_hex(0xd97706), 0);
+    lv_obj_center(s_signup_lbl1);
 
     lv_obj_t *btn_back3 = lv_button_create(s_screens[UI_SCREEN_SIGNUP_FP1]);
     lv_obj_set_size(btn_back3, 140, 42);
@@ -1096,22 +1145,28 @@ static void create_signup_screens(void) {
     lv_label_set_text(h4, "Scan 2 of 2: Lift & Place Finger Again");
     lv_obj_set_style_text_font(h4, &lv_font_montserrat_24, 0);
     lv_obj_set_style_text_color(h4, lv_color_hex(0x0f172a), 0);
-    lv_obj_align(h4, LV_ALIGN_TOP_MID, 0, 70);
+    lv_obj_align(h4, LV_ALIGN_TOP_MID, 0, 65);
 
-    lv_obj_t *card_box4 = lv_obj_create(s_screens[UI_SCREEN_SIGNUP_FP2]);
-    lv_obj_set_size(card_box4, 500, 180);
-    lv_obj_align(card_box4, LV_ALIGN_CENTER, 0, 20);
-    lv_obj_set_style_bg_color(card_box4, lv_color_hex(0xf8fafc), 0);
-    lv_obj_set_style_border_color(card_box4, lv_color_hex(0x10b981), 0);
-    lv_obj_set_style_border_width(card_box4, 2, 0);
-    lv_obj_set_style_radius(card_box4, 14, 0);
+    s_signup_patient_lbl2 = lv_label_create(s_screens[UI_SCREEN_SIGNUP_FP2]);
+    lv_label_set_text(s_signup_patient_lbl2, "Patient: Pending  |  Medical ID: --");
+    lv_obj_set_style_text_font(s_signup_patient_lbl2, &lv_font_montserrat_16, 0);
+    lv_obj_set_style_text_color(s_signup_patient_lbl2, lv_color_hex(0x0284c7), 0);
+    lv_obj_align(s_signup_patient_lbl2, LV_ALIGN_TOP_MID, 0, 95);
 
-    lv_obj_t *icon_fp2 = lv_label_create(card_box4);
-    lv_label_set_text(icon_fp2, LV_SYMBOL_OK "  CONFIRMING BIOMETRIC TEMPLATE\n\nPlace the same finger to finalize registration");
-    lv_obj_set_style_text_font(icon_fp2, &lv_font_montserrat_16, 0);
-    lv_obj_set_style_text_align(icon_fp2, LV_TEXT_ALIGN_CENTER, 0);
-    lv_obj_set_style_text_color(icon_fp2, lv_color_hex(0x10b981), 0);
-    lv_obj_center(icon_fp2);
+    s_signup_box2 = lv_obj_create(s_screens[UI_SCREEN_SIGNUP_FP2]);
+    lv_obj_set_size(s_signup_box2, 520, 180);
+    lv_obj_align(s_signup_box2, LV_ALIGN_CENTER, 0, 25);
+    lv_obj_set_style_bg_color(s_signup_box2, lv_color_hex(0xf8fafc), 0);
+    lv_obj_set_style_border_color(s_signup_box2, lv_color_hex(0x10b981), 0);
+    lv_obj_set_style_border_width(s_signup_box2, 2, 0);
+    lv_obj_set_style_radius(s_signup_box2, 14, 0);
+
+    s_signup_lbl2 = lv_label_create(s_signup_box2);
+    lv_label_set_text(s_signup_lbl2, LV_SYMBOL_OK "  CONFIRMING BIOMETRIC TEMPLATE\n\nPlace the same finger to finalize registration");
+    lv_obj_set_style_text_font(s_signup_lbl2, &lv_font_montserrat_16, 0);
+    lv_obj_set_style_text_align(s_signup_lbl2, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_style_text_color(s_signup_lbl2, lv_color_hex(0x10b981), 0);
+    lv_obj_center(s_signup_lbl2);
 
     lv_obj_t *btn_back4 = lv_button_create(s_screens[UI_SCREEN_SIGNUP_FP2]);
     lv_obj_set_size(btn_back4, 140, 42);
