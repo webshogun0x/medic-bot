@@ -14,15 +14,15 @@ static void boot_progress_task(void *pvParameters) {
     vTaskDelay(pdMS_TO_TICKS(400));
     ui_boot_update_status(20, "Display HW & Touch OK. Awaiting Main Controller...", 2, 0, 0, 0);
 
-    ESP_LOGI(TAG, "Boot progress watchdog waiting for Main Controller over UART...");
+    ESP_LOGI(TAG, "Boot task waiting indefinitely for Main Controller over UART...");
 
-    // Periodically ping Main Controller until Main Controller sends BOOT_PROGRESS (100%) or SYSTEM_STATUS
     while (ui_get_current_screen() == UI_SCREEN_BOOT) {
         display_comm_send_cmd("{\"type\":\"DISPLAY_READY\"}");
         vTaskDelay(pdMS_TO_TICKS(1000));
     }
 
     ESP_LOGI(TAG, "Boot sequence synchronized with Main Controller. Screen transitioned.");
+
     vTaskDelete(NULL);
 }
 
