@@ -63,6 +63,26 @@ void ui_dashboard_update_bp(int sys, int dia);
  */
 void ui_show_toast(const char *message);
 
+/**
+ * @brief Reset Login Card screen to initial waiting state.
+ */
+void ui_login_card_reset(void);
+
+/**
+ * @brief Update Login Card screen with scanned RFID UID and fetching status.
+ */
+void ui_login_card_show_scanning(const char *rfid_uid, const char *status_msg);
+
+/**
+ * @brief Update Login Card screen with patient details or lookup error.
+ */
+void ui_login_card_show_result(const char *rfid_uid, const char *name, const char *medical_id, bool is_error, const char *msg);
+
+/**
+ * @brief Update Login Fingerprint screen with patient info, registration state, and trial count.
+ */
+void ui_login_fp_show_status(const char *name, const char *medical_id, bool registered, int trial, int max_trials, const char *status_msg, bool is_error);
+
 #ifdef __cplusplus
 }
 #endif

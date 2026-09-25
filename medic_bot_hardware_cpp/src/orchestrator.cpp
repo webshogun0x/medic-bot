@@ -38,40 +38,68 @@ static uint8_t rfid_to_slot(const char *rfid) {
     return static_cast<uint8_t>((hash % FP_MAX_SLOTS) + 1);
 }
 
-// Fingerprint verification worker (FreeRTOS task)
+// Fingerprint verification worker (FreeRTOS task) - 3 Trial limit
 static void fp_verify_task(void *arg) {
     uint8_t expected_slot = static_cast<uint8_t>(reinterpret_cast<uintptr_t>(arg));
     ESP_LOGI(TAG, "FP verification started for expected slot #%d", expected_slot);
 
-    int timeout_sec = 15;
+    int max_trials = 3;
+    int trial = 1;
     bool matched = false;
 
-    while (timeout_sec > 0 && !s_fp_abort) {
-        uint16_t matched_id = 0;
-        uint16_t score = 0;
+    while (trial <= max_trials && !s_fp_abort) {
+        ESP_LOGI(TAG, "FP trial %d of %d starting for slot #%d...", trial, max_trials, expected_slot);
 
-        if (getFingerprintSensor().getImage() == FINGERPRINT_OK) {
-            if (getFingerprintSensor().image2Tz(1) == FINGERPRINT_OK) {
-                if (getFingerprintSensor().fingerFastSearch(1, matched_id, score) == FINGERPRINT_OK) {
-                    ESP_LOGI(TAG, "FP matched ID #%d (Score: %d)", matched_id, score);
-                    matched = true;
-                    if (g_sys_event_queue) {
-                        sys_event_t evt;
-                        memset(&evt, 0, sizeof(evt));
-                        evt.type = EVT_FP_MATCH_SUCCESS;
-                        evt.payload.fp_id = static_cast<uint8_t>(matched_id);
-                        xQueueSend(g_sys_event_queue, &evt, pdMS_TO_TICKS(50));
+        int timeout_sec = 15;
+
+        while (timeout_sec > 0 && !s_fp_abort) {
+            uint16_t matched_id = 0;
+            uint16_t score = 0;
+
+            if (getFingerprintSensor().getImage() == FINGERPRINT_OK) {
+                if (getFingerprintSensor().image2Tz(1) == FINGERPRINT_OK) {
+                    if (getFingerprintSensor().fingerFastSearch(1, matched_id, score) == FINGERPRINT_OK) {
+                        ESP_LOGI(TAG, "FP matched ID #%d (Score: %d) on trial %d", matched_id, score, trial);
+                        matched = true;
+                        if (g_sys_event_queue) {
+                            sys_event_t evt;
+                            memset(&evt, 0, sizeof(evt));
+                            evt.type = EVT_FP_MATCH_SUCCESS;
+                            evt.payload.fp_id = static_cast<uint8_t>(matched_id);
+                            xQueueSend(g_sys_event_queue, &evt, pdMS_TO_TICKS(50));
+                        }
+                        break;
                     }
-                    break;
                 }
+                ESP_LOGW(TAG, "Fingerprint scanned but mismatch on trial %d", trial);
+                break;
             }
+            vTaskDelay(pdMS_TO_TICKS(300));
+            timeout_sec--;
         }
-        vTaskDelay(pdMS_TO_TICKS(300));
-        timeout_sec--;
+
+        if (matched || s_fp_abort) {
+            break;
+        }
+
+        if (trial < max_trials) {
+            char buf[128];
+            snprintf(buf, sizeof(buf), "Trial %d of %d Failed. Please try again.", trial, max_trials);
+            getDisplay().sendRaw(
+                "{\"type\":\"FINGERPRINT_TRIAL\",\"trial\":%d,\"max_trials\":%d,\"message\":\"%s\"}\n",
+                trial, max_trials, buf
+            );
+            vTaskDelay(pdMS_TO_TICKS(1500));
+        } else {
+            getDisplay().sendRaw(
+                "{\"type\":\"FINGERPRINT_FAILED_FINAL\",\"trial\":3,\"max_trials\":3,\"message\":\"3 Failed Attempts. Returning to Standby...\"}\n"
+            );
+        }
+        trial++;
     }
 
     if (!matched && !s_fp_abort) {
-        ESP_LOGW(TAG, "Fingerprint verification failed or timed out");
+        ESP_LOGW(TAG, "Fingerprint verification failed after 3 trials");
         if (g_sys_event_queue) {
             sys_event_t evt;
             memset(&evt, 0, sizeof(evt));
@@ -202,15 +230,25 @@ void KioskOrchestrator::handleRfidScanned(const char *uid) {
     ESP_LOGI(TAG, "RFID scanned: [%s] in state %d", uid, static_cast<int>(m_state));
 
     if (m_state == OrchestratorState::LOGIN_2FA || m_state == OrchestratorState::STANDBY) {
+        // 1. Inform display that card is scanned and details are being fetched
+        getDisplay().sendRaw("{\"type\":\"CARD_SCANNED\",\"rfid\":\"%s\",\"message\":\"Fetching patient details...\"}\n", uid);
+        vTaskDelay(pdMS_TO_TICKS(300));
+
         user_profile_t profile;
         bool found = getStorage().getUser(uid, profile);
 
         if (found) {
             m_currentUser = profile;
-            if (profile.biometric_enrolled && profile.fingerprint_slot > 0) {
-                m_state = OrchestratorState::LOGIN_2FA;
-                getDisplay().sendPrompt("RFID verified. Place finger on sensor...");
+            bool has_fp = (profile.biometric_enrolled && profile.fingerprint_slot > 0);
 
+            // 2. Inform display that patient details were found
+            getDisplay().sendRaw(
+                "{\"type\":\"CARD_USER_FOUND\",\"rfid\":\"%s\",\"user_name\":\"%s\",\"user_medical_id\":\"%s\",\"biometric_enrolled\":%s}\n",
+                uid, profile.name, profile.medical_id, has_fp ? "true" : "false"
+            );
+
+            if (has_fp) {
+                m_state = OrchestratorState::LOGIN_2FA;
                 s_fp_abort = false;
                 s_fp_running = true;
                 xTaskCreatePinnedToCore(
@@ -219,11 +257,12 @@ void KioskOrchestrator::handleRfidScanned(const char *uid) {
                     PRIO_FINGERPRINT, &s_fp_task, CORE_REALTIME_APP
                 );
             } else {
-                getDisplay().sendTyped("FINGERPRINT_ERROR", "No fingerprint enrolled. Please enroll first.");
+                ESP_LOGW(TAG, "Patient record found but no fingerprint registered for card [%s]", uid);
+                vTaskDelay(pdMS_TO_TICKS(3000));
                 resetToStandby();
             }
         } else {
-            getDisplay().sendPrompt("User not found locally. Querying cloud...");
+            getDisplay().sendRaw("{\"type\":\"CARD_SCANNED\",\"rfid\":\"%s\",\"message\":\"Querying Cloud Database...\"}\n", uid);
             getCloudSync().queueFetchUser(uid);
         }
     } else if (m_state == OrchestratorState::NEW_USER_ENROLL) {
@@ -270,7 +309,7 @@ void KioskOrchestrator::processEvent(const sys_event_t &evt) {
 
         case EVT_CMD_START_LOGIN:
             m_state = OrchestratorState::LOGIN_2FA;
-            getDisplay().sendPrompt("Please scan your RFID card to log in...");
+            getDisplay().sendRaw("{\"type\":\"CARD_SCANNED\",\"rfid\":\"Waiting...\",\"message\":\"Please scan your clinic RFID card to log in...\"}\n");
             break;
 
         case EVT_CMD_START_ENROLLMENT:
@@ -300,9 +339,14 @@ void KioskOrchestrator::processEvent(const sys_event_t &evt) {
             m_currentUser = evt.payload.user;
             getStorage().saveUser(m_currentUser);
             if (m_state == OrchestratorState::LOGIN_2FA || m_state == OrchestratorState::STANDBY) {
-                if (m_currentUser.biometric_enrolled && m_currentUser.fingerprint_slot > 0) {
+                bool has_fp = (m_currentUser.biometric_enrolled && m_currentUser.fingerprint_slot > 0);
+                getDisplay().sendRaw(
+                    "{\"type\":\"CARD_USER_FOUND\",\"rfid\":\"%s\",\"user_name\":\"%s\",\"user_medical_id\":\"%s\",\"biometric_enrolled\":%s}\n",
+                    m_currentUser.rfid_uid, m_currentUser.name, m_currentUser.medical_id, has_fp ? "true" : "false"
+                );
+
+                if (has_fp) {
                     m_state = OrchestratorState::LOGIN_2FA;
-                    getDisplay().sendPrompt("Profile loaded. Place finger on sensor...");
                     s_fp_abort = false;
                     s_fp_running = true;
                     xTaskCreatePinnedToCore(
@@ -311,14 +355,15 @@ void KioskOrchestrator::processEvent(const sys_event_t &evt) {
                         PRIO_FINGERPRINT, &s_fp_task, CORE_REALTIME_APP
                     );
                 } else {
-                    getDisplay().sendTyped("FINGERPRINT_ERROR", "No fingerprint registered for this card.");
+                    vTaskDelay(pdMS_TO_TICKS(3000));
                     resetToStandby();
                 }
             }
             break;
 
         case EVT_USER_NOT_FOUND:
-            getDisplay().sendPrompt("Card not recognized. Please register on Web App first.");
+            getDisplay().sendRaw("{\"type\":\"CARD_ERROR\",\"message\":\"Card not recognized. Patient record not found in system.\"}\n");
+            vTaskDelay(pdMS_TO_TICKS(3000));
             resetToStandby();
             break;
 

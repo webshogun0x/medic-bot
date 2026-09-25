@@ -123,10 +123,68 @@ static void parse_json_line(const char *json_str) {
             ui_show_toast(msg->valuestring);
         }
         display_comm_send_cmd("{\"type\":\"ACK\",\"received\":\"PROMPT\"}");
-    } else if (strcmp(type, "CARD_DETECTED") == 0) {
+    } else if (strcmp(type, "CARD_DETECTED") == 0 || strcmp(type, "CARD_SCANNED") == 0) {
+        cJSON *rfid = cJSON_GetObjectItem(root, "rfid");
+        cJSON *msg = cJSON_GetObjectItem(root, "message");
+        const char *r = cJSON_IsString(rfid) ? rfid->valuestring : "";
+        const char *m = cJSON_IsString(msg) ? msg->valuestring : "Fetching patient details...";
+        ui_show_screen(UI_SCREEN_LOGIN_CARD);
+        ui_login_card_show_scanning(r, m);
+        display_comm_send_cmd("{\"type\":\"ACK\",\"received\":\"CARD_SCANNED\"}");
+    } else if (strcmp(type, "CARD_USER_FOUND") == 0) {
+        cJSON *rfid = cJSON_GetObjectItem(root, "rfid");
+        cJSON *name = cJSON_GetObjectItem(root, "user_name");
+        cJSON *id = cJSON_GetObjectItem(root, "user_medical_id");
+        cJSON *bio = cJSON_GetObjectItem(root, "biometric_enrolled");
+        const char *r = cJSON_IsString(rfid) ? rfid->valuestring : "";
+        const char *n = cJSON_IsString(name) ? name->valuestring : "";
+        const char *i = cJSON_IsString(id) ? id->valuestring : "";
+        bool enrolled = cJSON_IsTrue(bio);
+
+        if (n[0]) strncpy(g_active_patient.name, n, sizeof(g_active_patient.name) - 1);
+        if (i[0]) strncpy(g_active_patient.medical_id, i, sizeof(g_active_patient.medical_id) - 1);
+
+        ui_show_screen(UI_SCREEN_LOGIN_CARD);
+        ui_login_card_show_result(r, n, i, false, "Patient Record Found!");
+
+        vTaskDelay(pdMS_TO_TICKS(800));
         ui_show_screen(UI_SCREEN_LOGIN_FP);
-        ui_show_toast("Card Verified! Place finger on scanner.");
-        display_comm_send_cmd("{\"type\":\"ACK\",\"received\":\"CARD_DETECTED\"}");
+        if (enrolled) {
+            ui_login_fp_show_status(n, i, true, 1, 3, "Biometrics Registered. Place finger on scanner pad...", false);
+        } else {
+            ui_login_fp_show_status(n, i, false, 0, 3, "❌ Fingerprint Not Registered for this patient card!", true);
+        }
+        display_comm_send_cmd("{\"type\":\"ACK\",\"received\":\"CARD_USER_FOUND\"}");
+    } else if (strcmp(type, "CARD_ERROR") == 0) {
+        cJSON *rfid = cJSON_GetObjectItem(root, "rfid");
+        cJSON *msg = cJSON_GetObjectItem(root, "message");
+        const char *r = cJSON_IsString(rfid) ? rfid->valuestring : "";
+        const char *m = cJSON_IsString(msg) ? msg->valuestring : "Card Not Recognized / User Not Found";
+
+        ui_show_screen(UI_SCREEN_LOGIN_CARD);
+        ui_login_card_show_result(r, NULL, NULL, true, m);
+        display_comm_send_cmd("{\"type\":\"ACK\",\"received\":\"CARD_ERROR\"}");
+    } else if (strcmp(type, "FINGERPRINT_TRIAL") == 0) {
+        cJSON *trial = cJSON_GetObjectItem(root, "trial");
+        cJSON *max_t = cJSON_GetObjectItem(root, "max_trials");
+        cJSON *msg = cJSON_GetObjectItem(root, "message");
+        int t = cJSON_IsNumber(trial) ? trial->valueint : 1;
+        int mt = cJSON_IsNumber(max_t) ? max_t->valueint : 3;
+        const char *m = cJSON_IsString(msg) ? msg->valuestring : "Fingerprint mismatch. Try again.";
+
+        ui_show_screen(UI_SCREEN_LOGIN_FP);
+        ui_login_fp_show_status(g_active_patient.name, g_active_patient.medical_id, true, t, mt, m, true);
+        display_comm_send_cmd("{\"type\":\"ACK\",\"received\":\"FINGERPRINT_TRIAL\"}");
+    } else if (strcmp(type, "FINGERPRINT_FAILED_FINAL") == 0) {
+        cJSON *msg = cJSON_GetObjectItem(root, "message");
+        const char *m = cJSON_IsString(msg) ? msg->valuestring : "3 Failed Attempts. Returning to Standby...";
+
+        ui_show_screen(UI_SCREEN_LOGIN_FP);
+        ui_login_fp_show_status(g_active_patient.name, g_active_patient.medical_id, true, 3, 3, m, true);
+        ui_show_toast("❌ 3 Failed Attempts. Returning to Main Screen...");
+        vTaskDelay(pdMS_TO_TICKS(1500));
+        ui_show_screen(UI_SCREEN_IDLE);
+        display_comm_send_cmd("{\"type\":\"ACK\",\"received\":\"FINGERPRINT_FAILED_FINAL\"}");
     } else if (strcmp(type, "FINGERPRINT_SUCCESS") == 0) {
         ui_show_toast("Biometric Verified! Welcome.");
         ui_show_screen(UI_SCREEN_DASHBOARD);

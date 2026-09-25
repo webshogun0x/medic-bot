@@ -33,6 +33,20 @@ static lv_obj_t *s_toast_obj = NULL;
 static lv_obj_t *s_toast_lbl = NULL;
 static lv_timer_t *s_toast_timer = NULL;
 
+// Login Screen Widgets
+static lv_obj_t *s_login_card_box = NULL;
+static lv_obj_t *s_login_card_icon = NULL;
+static lv_obj_t *s_login_card_rfid_lbl = NULL;
+static lv_obj_t *s_login_card_status_lbl = NULL;
+static lv_obj_t *s_login_card_result_lbl = NULL;
+
+static lv_obj_t *s_login_fp_box = NULL;
+static lv_obj_t *s_login_fp_patient_lbl = NULL;
+static lv_obj_t *s_login_fp_icon = NULL;
+static lv_obj_t *s_login_fp_reg_lbl = NULL;
+static lv_obj_t *s_login_fp_status_lbl = NULL;
+static lv_obj_t *s_login_fp_trial_pills[3] = {NULL, NULL, NULL};
+
 // Helper: AHA BP Classification
 static const char *get_bp_category(int sys, int dia, lv_color_t *color) {
     if (sys >= 180 || dia >= 120) {
@@ -63,6 +77,7 @@ static void create_profile_screen(void);
 
 // Navigation Event Handlers
 static void on_btn_idle_existing(lv_event_t *e) {
+    ui_login_card_reset();
     display_comm_send_cmd("START_LOGIN");
     ui_show_screen(UI_SCREEN_LOGIN_CARD);
 }
@@ -75,6 +90,183 @@ static void on_btn_idle_new(lv_event_t *e) {
 static void on_btn_cancel_back(lv_event_t *e) {
     display_comm_send_cmd("BACK");
     ui_show_screen(UI_SCREEN_IDLE);
+}
+
+void ui_login_card_reset(void) {
+    lvgl_port_lock(0);
+    if (s_login_card_box) {
+        lv_obj_set_style_border_color(s_login_card_box, lv_color_hex(0x0284c7), 0);
+    }
+    if (s_login_card_icon) {
+        lv_label_set_text(s_login_card_icon, LV_SYMBOL_DIRECTORY);
+        lv_obj_set_style_text_color(s_login_card_icon, lv_color_hex(0x0284c7), 0);
+    }
+    if (s_login_card_rfid_lbl) {
+        lv_label_set_text(s_login_card_rfid_lbl, "RFID Badge: Waiting for scan...");
+        lv_obj_set_style_text_color(s_login_card_rfid_lbl, lv_color_hex(0x0f172a), 0);
+    }
+    if (s_login_card_status_lbl) {
+        lv_label_set_text(s_login_card_status_lbl, "Please tap your clinic card against the RFID scanner pad");
+        lv_obj_set_style_text_color(s_login_card_status_lbl, lv_color_hex(0x64748b), 0);
+    }
+    if (s_login_card_result_lbl) {
+        lv_label_set_text(s_login_card_result_lbl, "");
+    }
+    lvgl_port_unlock();
+}
+
+void ui_login_card_show_scanning(const char *rfid_uid, const char *status_msg) {
+    lvgl_port_lock(0);
+    char buf[64];
+    if (s_login_card_box) {
+        lv_obj_set_style_border_color(s_login_card_box, lv_color_hex(0x0284c7), 0);
+    }
+    if (s_login_card_icon) {
+        lv_label_set_text(s_login_card_icon, LV_SYMBOL_REFRESH);
+        lv_obj_set_style_text_color(s_login_card_icon, lv_color_hex(0x0284c7), 0);
+    }
+    if (s_login_card_rfid_lbl) {
+        snprintf(buf, sizeof(buf), "RFID Badge: %s", (rfid_uid && rfid_uid[0]) ? rfid_uid : "Scanned");
+        lv_label_set_text(s_login_card_rfid_lbl, buf);
+        lv_obj_set_style_text_color(s_login_card_rfid_lbl, lv_color_hex(0x0284c7), 0);
+    }
+    if (s_login_card_status_lbl) {
+        lv_label_set_text(s_login_card_status_lbl, (status_msg && status_msg[0]) ? status_msg : "Fetching patient details from database...");
+        lv_obj_set_style_text_color(s_login_card_status_lbl, lv_color_hex(0xd97706), 0);
+    }
+    if (s_login_card_result_lbl) {
+        lv_label_set_text(s_login_card_result_lbl, "Searching database records...");
+    }
+    lvgl_port_unlock();
+}
+
+void ui_login_card_show_result(const char *rfid_uid, const char *name, const char *medical_id, bool is_error, const char *msg) {
+    lvgl_port_lock(0);
+    char buf[128];
+
+    if (is_error) {
+        if (s_login_card_box) {
+            lv_obj_set_style_border_color(s_login_card_box, lv_color_hex(0xef4444), 0);
+        }
+        if (s_login_card_icon) {
+            lv_label_set_text(s_login_card_icon, LV_SYMBOL_WARNING);
+            lv_obj_set_style_text_color(s_login_card_icon, lv_color_hex(0xef4444), 0);
+        }
+        if (s_login_card_rfid_lbl && rfid_uid) {
+            snprintf(buf, sizeof(buf), "RFID Badge: %s", rfid_uid);
+            lv_label_set_text(s_login_card_rfid_lbl, buf);
+            lv_obj_set_style_text_color(s_login_card_rfid_lbl, lv_color_hex(0xef4444), 0);
+        }
+        if (s_login_card_status_lbl) {
+            lv_label_set_text(s_login_card_status_lbl, "❌ Patient Lookup Failed");
+            lv_obj_set_style_text_color(s_login_card_status_lbl, lv_color_hex(0xef4444), 0);
+        }
+        if (s_login_card_result_lbl) {
+            lv_label_set_text(s_login_card_result_lbl, (msg && msg[0]) ? msg : "Card not recognized or user not found.");
+        }
+    } else {
+        if (s_login_card_box) {
+            lv_obj_set_style_border_color(s_login_card_box, lv_color_hex(0x10b981), 0);
+        }
+        if (s_login_card_icon) {
+            lv_label_set_text(s_login_card_icon, LV_SYMBOL_OK);
+            lv_obj_set_style_text_color(s_login_card_icon, lv_color_hex(0x10b981), 0);
+        }
+        if (s_login_card_rfid_lbl && rfid_uid) {
+            snprintf(buf, sizeof(buf), "RFID Badge: %s", rfid_uid);
+            lv_label_set_text(s_login_card_rfid_lbl, buf);
+            lv_obj_set_style_text_color(s_login_card_rfid_lbl, lv_color_hex(0x10b981), 0);
+        }
+        if (s_login_card_status_lbl) {
+            lv_label_set_text(s_login_card_status_lbl, "✅ Patient Record Found!");
+            lv_obj_set_style_text_color(s_login_card_status_lbl, lv_color_hex(0x10b981), 0);
+        }
+        if (s_login_card_result_lbl && name && medical_id) {
+            snprintf(buf, sizeof(buf), "Patient Name: %s\nMedical ID: %s", name, medical_id);
+            lv_label_set_text(s_login_card_result_lbl, buf);
+        }
+    }
+    lvgl_port_unlock();
+}
+
+void ui_login_fp_show_status(const char *name, const char *medical_id, bool registered, int trial, int max_trials, const char *status_msg, bool is_error) {
+    lvgl_port_lock(0);
+    char buf[128];
+
+    if (s_login_fp_patient_lbl) {
+        snprintf(buf, sizeof(buf), "Patient: %s  |  Medical ID: %s",
+                 (name && name[0]) ? name : "Unknown Patient",
+                 (medical_id && medical_id[0]) ? medical_id : "--");
+        lv_label_set_text(s_login_fp_patient_lbl, buf);
+    }
+
+    if (!registered) {
+        if (s_login_fp_box) lv_obj_set_style_border_color(s_login_fp_box, lv_color_hex(0xef4444), 0);
+        if (s_login_fp_icon) {
+            lv_label_set_text(s_login_fp_icon, LV_SYMBOL_WARNING);
+            lv_obj_set_style_text_color(s_login_fp_icon, lv_color_hex(0xef4444), 0);
+        }
+        if (s_login_fp_reg_lbl) {
+            lv_label_set_text(s_login_fp_reg_lbl, "STATUS: FINGERPRINT NOT REGISTERED");
+            lv_obj_set_style_text_color(s_login_fp_reg_lbl, lv_color_hex(0xef4444), 0);
+        }
+        if (s_login_fp_status_lbl) {
+            lv_label_set_text(s_login_fp_status_lbl, (status_msg && status_msg[0]) ? status_msg : "No fingerprint template enrolled for this patient card.");
+        }
+        for (int i = 0; i < 3; i++) {
+            if (s_login_fp_trial_pills[i]) {
+                lv_obj_set_style_bg_color(s_login_fp_trial_pills[i], lv_color_hex(0xf1f5f9), 0);
+                lv_obj_set_style_text_color(s_login_fp_trial_pills[i], lv_color_hex(0x94a3b8), 0);
+            }
+        }
+    } else {
+        if (is_error) {
+            if (s_login_fp_box) lv_obj_set_style_border_color(s_login_fp_box, lv_color_hex(0xef4444), 0);
+            if (s_login_fp_icon) {
+                lv_label_set_text(s_login_fp_icon, LV_SYMBOL_WARNING);
+                lv_obj_set_style_text_color(s_login_fp_icon, lv_color_hex(0xef4444), 0);
+            }
+        } else {
+            if (s_login_fp_box) lv_obj_set_style_border_color(s_login_fp_box, lv_color_hex(0x10b981), 0);
+            if (s_login_fp_icon) {
+                lv_label_set_text(s_login_fp_icon, LV_SYMBOL_KEYBOARD);
+                lv_obj_set_style_text_color(s_login_fp_icon, lv_color_hex(0x10b981), 0);
+            }
+        }
+
+        if (s_login_fp_reg_lbl) {
+            lv_label_set_text(s_login_fp_reg_lbl, "STATUS: BIOMETRICS REGISTERED");
+            lv_obj_set_style_text_color(s_login_fp_reg_lbl, lv_color_hex(0x10b981), 0);
+        }
+
+        if (s_login_fp_status_lbl) {
+            lv_label_set_text(s_login_fp_status_lbl, (status_msg && status_msg[0]) ? status_msg : "Place finger firmly on the optical scanner pad");
+        }
+
+        for (int i = 0; i < 3; i++) {
+            if (!s_login_fp_trial_pills[i]) continue;
+            if (i + 1 < trial) {
+                // Failed previous trial
+                lv_obj_set_style_bg_color(s_login_fp_trial_pills[i], lv_color_hex(0xfee2e2), 0);
+                lv_obj_set_style_text_color(s_login_fp_trial_pills[i], lv_color_hex(0xef4444), 0);
+            } else if (i + 1 == trial) {
+                // Active current trial
+                if (is_error) {
+                    lv_obj_set_style_bg_color(s_login_fp_trial_pills[i], lv_color_hex(0xfef3c7), 0);
+                    lv_obj_set_style_text_color(s_login_fp_trial_pills[i], lv_color_hex(0xd97706), 0);
+                } else {
+                    lv_obj_set_style_bg_color(s_login_fp_trial_pills[i], lv_color_hex(0xe0f2fe), 0);
+                    lv_obj_set_style_text_color(s_login_fp_trial_pills[i], lv_color_hex(0x0284c7), 0);
+                }
+            } else {
+                // Future trial
+                lv_obj_set_style_bg_color(s_login_fp_trial_pills[i], lv_color_hex(0xf1f5f9), 0);
+                lv_obj_set_style_text_color(s_login_fp_trial_pills[i], lv_color_hex(0x94a3b8), 0);
+            }
+        }
+    }
+
+    lvgl_port_unlock();
 }
 
 static void on_btn_bp_sys_adjust(lv_event_t *e) {
@@ -603,24 +795,57 @@ static void create_dashboard_screen(void) {
 }
 
 static void create_login_screens(void) {
-    // Screen: Login Card Prompt
+    // -------------------------------------------------------------
+    // Screen 1: Existing Patient RFID Card Prompt & Details Fetch
+    // -------------------------------------------------------------
     s_screens[UI_SCREEN_LOGIN_CARD] = lv_obj_create(NULL);
     lv_obj_set_style_bg_color(s_screens[UI_SCREEN_LOGIN_CARD], lv_color_hex(0xffffff), 0);
 
     lv_obj_t *t1 = lv_label_create(s_screens[UI_SCREEN_LOGIN_CARD]);
-    lv_label_set_text(t1, "Scan Your Clinic Badge");
-    lv_obj_set_style_text_color(t1, lv_color_hex(0x0f172a), 0);
-    lv_obj_set_style_text_font(t1, &lv_font_montserrat_20, 0);
-    lv_obj_align(t1, LV_ALIGN_TOP_MID, 0, 80);
+    lv_label_set_text(t1, "Existing Patient Verification — Step 1 of 2");
+    lv_obj_set_style_text_color(t1, lv_color_hex(0x0284c7), 0);
+    lv_obj_set_style_text_font(t1, &lv_font_montserrat_14, 0);
+    lv_obj_align(t1, LV_ALIGN_TOP_MID, 0, 35);
 
-    lv_obj_t *btn_sim_card = lv_button_create(s_screens[UI_SCREEN_LOGIN_CARD]);
-    lv_obj_set_size(btn_sim_card, 280, 54);
-    lv_obj_align(btn_sim_card, LV_ALIGN_CENTER, 0, 0);
-    lv_obj_set_style_bg_color(btn_sim_card, lv_color_hex(0x0284c7), 0);
-    lv_obj_set_style_bg_color(btn_sim_card, lv_color_hex(0x2563eb), LV_STATE_PRESSED);
-    lv_obj_t *lbl_sc = lv_label_create(btn_sim_card);
-    lv_label_set_text(lbl_sc, LV_SYMBOL_KEYBOARD "  Tap RFID Badge");
-    lv_obj_center(lbl_sc);
+    lv_obj_t *h1 = lv_label_create(s_screens[UI_SCREEN_LOGIN_CARD]);
+    lv_label_set_text(h1, "Scan Your Clinic Badge");
+    lv_obj_set_style_text_font(h1, &lv_font_montserrat_24, 0);
+    lv_obj_set_style_text_color(h1, lv_color_hex(0x0f172a), 0);
+    lv_obj_align(h1, LV_ALIGN_TOP_MID, 0, 65);
+
+    s_login_card_box = lv_obj_create(s_screens[UI_SCREEN_LOGIN_CARD]);
+    lv_obj_set_size(s_login_card_box, 580, 240);
+    lv_obj_align(s_login_card_box, LV_ALIGN_CENTER, 0, 10);
+    lv_obj_set_style_bg_color(s_login_card_box, lv_color_hex(0xf8fafc), 0);
+    lv_obj_set_style_border_color(s_login_card_box, lv_color_hex(0x0284c7), 0);
+    lv_obj_set_style_border_width(s_login_card_box, 2, 0);
+    lv_obj_set_style_radius(s_login_card_box, 16, 0);
+    lv_obj_clear_flag(s_login_card_box, LV_OBJ_FLAG_SCROLLABLE);
+
+    s_login_card_icon = lv_label_create(s_login_card_box);
+    lv_label_set_text(s_login_card_icon, LV_SYMBOL_DIRECTORY);
+    lv_obj_set_style_text_color(s_login_card_icon, lv_color_hex(0x0284c7), 0);
+    lv_obj_set_style_text_font(s_login_card_icon, &lv_font_montserrat_24, 0);
+    lv_obj_align(s_login_card_icon, LV_ALIGN_TOP_MID, 0, 15);
+
+    s_login_card_rfid_lbl = lv_label_create(s_login_card_box);
+    lv_label_set_text(s_login_card_rfid_lbl, "RFID Badge: Waiting for scan...");
+    lv_obj_set_style_text_font(s_login_card_rfid_lbl, &lv_font_montserrat_16, 0);
+    lv_obj_set_style_text_color(s_login_card_rfid_lbl, lv_color_hex(0x0f172a), 0);
+    lv_obj_align(s_login_card_rfid_lbl, LV_ALIGN_TOP_MID, 0, 60);
+
+    s_login_card_status_lbl = lv_label_create(s_login_card_box);
+    lv_label_set_text(s_login_card_status_lbl, "Please tap your clinic card against the RFID scanner pad");
+    lv_obj_set_style_text_font(s_login_card_status_lbl, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_color(s_login_card_status_lbl, lv_color_hex(0x64748b), 0);
+    lv_obj_align(s_login_card_status_lbl, LV_ALIGN_TOP_MID, 0, 95);
+
+    s_login_card_result_lbl = lv_label_create(s_login_card_box);
+    lv_label_set_text(s_login_card_result_lbl, "");
+    lv_obj_set_style_text_font(s_login_card_result_lbl, &lv_font_montserrat_16, 0);
+    lv_obj_set_style_text_color(s_login_card_result_lbl, lv_color_hex(0x10b981), 0);
+    lv_obj_set_style_text_align(s_login_card_result_lbl, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_align(s_login_card_result_lbl, LV_ALIGN_TOP_MID, 0, 140);
 
     lv_obj_t *btn_back1 = lv_button_create(s_screens[UI_SCREEN_LOGIN_CARD]);
     lv_obj_set_size(btn_back1, 140, 42);
@@ -632,24 +857,85 @@ static void create_login_screens(void) {
     lv_label_set_text(lbl_b1, LV_SYMBOL_LEFT " Cancel");
     lv_obj_center(lbl_b1);
 
-    // Screen: Login Fingerprint Prompt
+    // -------------------------------------------------------------
+    // Screen 2: Fingerprint Verification & 3-Trial Handling Screen
+    // -------------------------------------------------------------
     s_screens[UI_SCREEN_LOGIN_FP] = lv_obj_create(NULL);
     lv_obj_set_style_bg_color(s_screens[UI_SCREEN_LOGIN_FP], lv_color_hex(0xffffff), 0);
 
     lv_obj_t *t2 = lv_label_create(s_screens[UI_SCREEN_LOGIN_FP]);
-    lv_label_set_text(t2, "Place Finger on Scanner");
-    lv_obj_set_style_text_color(t2, lv_color_hex(0x0f172a), 0);
-    lv_obj_set_style_text_font(t2, &lv_font_montserrat_20, 0);
-    lv_obj_align(t2, LV_ALIGN_TOP_MID, 0, 80);
+    lv_label_set_text(t2, "Existing Patient Verification — Step 2 of 2");
+    lv_obj_set_style_text_color(t2, lv_color_hex(0x0284c7), 0);
+    lv_obj_set_style_text_font(t2, &lv_font_montserrat_14, 0);
+    lv_obj_align(t2, LV_ALIGN_TOP_MID, 0, 30);
 
-    lv_obj_t *btn_sim_fp = lv_button_create(s_screens[UI_SCREEN_LOGIN_FP]);
-    lv_obj_set_size(btn_sim_fp, 280, 54);
-    lv_obj_align(btn_sim_fp, LV_ALIGN_CENTER, 0, 0);
-    lv_obj_set_style_bg_color(btn_sim_fp, lv_color_hex(0x10b981), 0);
-    lv_obj_set_style_bg_color(btn_sim_fp, lv_color_hex(0x2563eb), LV_STATE_PRESSED);
-    lv_obj_t *lbl_fp = lv_label_create(btn_sim_fp);
-    lv_label_set_text(lbl_fp, LV_SYMBOL_OK "  Verify Biometrics");
-    lv_obj_center(lbl_fp);
+    lv_obj_t *h2 = lv_label_create(s_screens[UI_SCREEN_LOGIN_FP]);
+    lv_label_set_text(h2, "Biometric Authentication");
+    lv_obj_set_style_text_font(h2, &lv_font_montserrat_24, 0);
+    lv_obj_set_style_text_color(h2, lv_color_hex(0x0f172a), 0);
+    lv_obj_align(h2, LV_ALIGN_TOP_MID, 0, 55);
+
+    s_login_fp_patient_lbl = lv_label_create(s_screens[UI_SCREEN_LOGIN_FP]);
+    lv_label_set_text(s_login_fp_patient_lbl, "Patient: Waiting...  |  Medical ID: --");
+    lv_obj_set_style_text_font(s_login_fp_patient_lbl, &lv_font_montserrat_16, 0);
+    lv_obj_set_style_text_color(s_login_fp_patient_lbl, lv_color_hex(0x0284c7), 0);
+    lv_obj_align(s_login_fp_patient_lbl, LV_ALIGN_TOP_MID, 0, 90);
+
+    s_login_fp_box = lv_obj_create(s_screens[UI_SCREEN_LOGIN_FP]);
+    lv_obj_set_size(s_login_fp_box, 600, 240);
+    lv_obj_align(s_login_fp_box, LV_ALIGN_CENTER, 0, 25);
+    lv_obj_set_style_bg_color(s_login_fp_box, lv_color_hex(0xf8fafc), 0);
+    lv_obj_set_style_border_color(s_login_fp_box, lv_color_hex(0x10b981), 0);
+    lv_obj_set_style_border_width(s_login_fp_box, 2, 0);
+    lv_obj_set_style_radius(s_login_fp_box, 16, 0);
+    lv_obj_clear_flag(s_login_fp_box, LV_OBJ_FLAG_SCROLLABLE);
+
+    s_login_fp_icon = lv_label_create(s_login_fp_box);
+    lv_label_set_text(s_login_fp_icon, LV_SYMBOL_KEYBOARD);
+    lv_obj_set_style_text_color(s_login_fp_icon, lv_color_hex(0x10b981), 0);
+    lv_obj_set_style_text_font(s_login_fp_icon, &lv_font_montserrat_24, 0);
+    lv_obj_align(s_login_fp_icon, LV_ALIGN_TOP_MID, 0, 15);
+
+    s_login_fp_reg_lbl = lv_label_create(s_login_fp_box);
+    lv_label_set_text(s_login_fp_reg_lbl, "STATUS: BIOMETRICS REGISTERED");
+    lv_obj_set_style_text_font(s_login_fp_reg_lbl, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_color(s_login_fp_reg_lbl, lv_color_hex(0x10b981), 0);
+    lv_obj_align(s_login_fp_reg_lbl, LV_ALIGN_TOP_MID, 0, 55);
+
+    s_login_fp_status_lbl = lv_label_create(s_login_fp_box);
+    lv_label_set_text(s_login_fp_status_lbl, "Place your registered finger firmly on the optical scanner pad");
+    lv_obj_set_style_text_font(s_login_fp_status_lbl, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_color(s_login_fp_status_lbl, lv_color_hex(0x0f172a), 0);
+    lv_obj_set_style_text_align(s_login_fp_status_lbl, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_align(s_login_fp_status_lbl, LV_ALIGN_TOP_MID, 0, 85);
+
+    // Container for 3 trial pills
+    lv_obj_t *trial_box = lv_obj_create(s_login_fp_box);
+    lv_obj_set_size(trial_box, 480, 44);
+    lv_obj_align(trial_box, LV_ALIGN_BOTTOM_MID, 0, -15);
+    lv_obj_set_style_bg_opa(trial_box, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(trial_box, 0, 0);
+    lv_obj_clear_flag(trial_box, LV_OBJ_FLAG_SCROLLABLE);
+
+    const char *trial_texts[3] = {
+        "Trial 1 of 3",
+        "Trial 2 of 3",
+        "Trial 3 of 3"
+    };
+
+    for (int i = 0; i < 3; i++) {
+        s_login_fp_trial_pills[i] = lv_label_create(trial_box);
+        lv_label_set_text(s_login_fp_trial_pills[i], trial_texts[i]);
+        lv_obj_set_size(s_login_fp_trial_pills[i], 140, 32);
+        lv_obj_set_pos(s_login_fp_trial_pills[i], i * 160 + 10, 5);
+        lv_obj_set_style_bg_opa(s_login_fp_trial_pills[i], LV_OPA_COVER, 0);
+        lv_obj_set_style_bg_color(s_login_fp_trial_pills[i], lv_color_hex(0xf1f5f9), 0);
+        lv_obj_set_style_text_color(s_login_fp_trial_pills[i], lv_color_hex(0x94a3b8), 0);
+        lv_obj_set_style_text_font(s_login_fp_trial_pills[i], &lv_font_montserrat_12, 0);
+        lv_obj_set_style_text_align(s_login_fp_trial_pills[i], LV_TEXT_ALIGN_CENTER, 0);
+        lv_obj_set_style_radius(s_login_fp_trial_pills[i], 8, 0);
+        lv_obj_set_style_pad_top(s_login_fp_trial_pills[i], 8, 0);
+    }
 
     lv_obj_t *btn_back2 = lv_button_create(s_screens[UI_SCREEN_LOGIN_FP]);
     lv_obj_set_size(btn_back2, 140, 42);
