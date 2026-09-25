@@ -33,6 +33,11 @@ void ui_init(void);
 void ui_show_screen(ui_screen_id_t screen_id);
 
 /**
+ * @brief Get the currently active screen ID.
+ */
+ui_screen_id_t ui_get_current_screen(void);
+
+/**
  * @brief Update Boot screen progress bar and diagnostic pills.
  * @param percent 0-100
  * @param task_text description of current initialization task

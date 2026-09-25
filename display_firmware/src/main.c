@@ -10,26 +10,19 @@
 static const char *TAG = "MAIN_APP";
 
 static void boot_progress_task(void *pvParameters) {
-    // Initial hardware boot progression
+    // Initial display local hardware boot status
     vTaskDelay(pdMS_TO_TICKS(400));
-    ui_boot_update_status(25, "RGB DMA & GT911 Touch OK", 2, 0, 0, 0);
+    ui_boot_update_status(20, "Display HW & Touch OK. Awaiting Main Controller...", 2, 0, 0, 0);
 
-    vTaskDelay(pdMS_TO_TICKS(600));
-    ui_boot_update_status(55, "Connecting to Main Controller...", 2, 1, 0, 0);
+    ESP_LOGI(TAG, "Boot progress watchdog waiting for Main Controller over UART...");
 
-    // Announce display readiness to Main Controller
-    display_comm_send_cmd("{\"type\":\"DISPLAY_READY\"}");
+    // Periodically ping Main Controller until Main Controller sends BOOT_PROGRESS (100%) or SYSTEM_STATUS
+    while (ui_get_current_screen() == UI_SCREEN_BOOT) {
+        display_comm_send_cmd("{\"type\":\"DISPLAY_READY\"}");
+        vTaskDelay(pdMS_TO_TICKS(1000));
+    }
 
-    vTaskDelay(pdMS_TO_TICKS(800));
-    ui_boot_update_status(85, "Synchronizing UI Engine...", 2, 2, 1, 2);
-
-    vTaskDelay(pdMS_TO_TICKS(700));
-    ui_boot_update_status(100, "MediBot Kiosk Ready", 2, 2, 2, 2);
-
-    vTaskDelay(pdMS_TO_TICKS(600));
-    ui_show_screen(UI_SCREEN_IDLE);
-
-    ESP_LOGI(TAG, "Boot sequence completed, Idle screen active");
+    ESP_LOGI(TAG, "Boot sequence synchronized with Main Controller. Screen transitioned.");
     vTaskDelete(NULL);
 }
 

@@ -132,6 +132,10 @@ void ui_show_screen(ui_screen_id_t screen_id) {
     lvgl_port_unlock();
 }
 
+ui_screen_id_t ui_get_current_screen(void) {
+    return s_current_screen;
+}
+
 void ui_boot_update_status(int percent, const char *task_text, int core_ok, int wifi_ok, int cloud_ok, int sensors_ok) {
     lvgl_port_lock(0);
     if (s_boot_bar) lv_bar_set_value(s_boot_bar, percent, LV_ANIM_ON);
