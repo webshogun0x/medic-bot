@@ -100,8 +100,12 @@ esp_err_t AS608Fingerprint::begin(int tx_pin, int rx_pin, uint32_t baud_rate) {
         }
     }
 
-    ESP_LOGW(TAG, "AS608 Sensor password check bypassed (fallback active)");
-    return ESP_OK;
+    if (m_initialized) {
+        uart_driver_delete(m_uart_num);
+        m_initialized = false;
+    }
+    ESP_LOGE(TAG, "❌ AS608 Fingerprint Sensor failed password/hardware check on all pin & baud configurations!");
+    return ESP_FAIL;
 }
 
 esp_err_t AS608Fingerprint::sendPacket(uint8_t cmd, const uint8_t *params, uint16_t param_len) {
@@ -143,88 +147,55 @@ esp_err_t AS608Fingerprint::sendPacket(uint8_t cmd, const uint8_t *params, uint1
 
 uint8_t AS608Fingerprint::recvAck(uint8_t *ack_data, uint16_t *ack_data_len, uint32_t timeout_ms) {
     int64_t start_time = esp_timer_get_time() / 1000;
-
-    // 1. Preamble synchronization: Hunt byte-by-byte for 0xEF 0x01 (Adafruit protocol matching)
-    uint8_t prev = 0, curr = 0;
-    bool sync_found = false;
-    int bytes_seen = 0;
+    uint8_t buf[256];
+    uint16_t buf_len = 0;
 
     while ((esp_timer_get_time() / 1000 - start_time) < timeout_ms) {
-        if (uart_read_bytes(m_uart_num, &curr, 1, pdMS_TO_TICKS(10)) > 0) {
-            bytes_seen++;
-            if (prev == 0xEF && curr == 0x01) {
-                sync_found = true;
-                break;
+        int r = uart_read_bytes(m_uart_num, buf + buf_len, sizeof(buf) - buf_len, pdMS_TO_TICKS(20));
+        if (r > 0) {
+            buf_len += r;
+
+            for (uint16_t i = 0; i + 8 < buf_len; i++) {
+                if (buf[i] == 0xEF && buf[i + 1] == 0x01) {
+                    uint8_t pid = buf[i + 6];
+                    uint16_t packet_len = ((uint16_t)buf[i + 7] << 8) | buf[i + 8];
+                    uint16_t total_expected = i + 9 + packet_len;
+
+                    if (buf_len >= total_expected) {
+                        if (pid != AS608_ACK_PACKET) {
+                            ESP_LOGW(TAG, "Expected ACK PID 0x07, got 0x%02X", pid);
+                            return FINGERPRINT_PACKETRECIEVEERR;
+                        }
+
+                        uint16_t calc_sum = pid + buf[i + 7] + buf[i + 8];
+                        for (uint16_t k = 0; k < packet_len - 2; k++) {
+                            calc_sum += buf[i + 9 + k];
+                        }
+                        uint16_t rx_sum = ((uint16_t)buf[i + 9 + packet_len - 2] << 8) | buf[i + 9 + packet_len - 1];
+
+                        if (calc_sum != rx_sum) {
+                            ESP_LOGW(TAG, "Checksum mismatch: calc=0x%04X, rx=0x%04X", calc_sum, rx_sum);
+                            return FINGERPRINT_PACKETRECIEVEERR;
+                        }
+
+                        uint8_t confirmation_code = buf[i + 9];
+                        uint16_t payload_len = packet_len - 3;
+
+                        if (ack_data && ack_data_len) {
+                            if (*ack_data_len >= payload_len) {
+                                std::memcpy(ack_data, &buf[i + 10], payload_len);
+                                *ack_data_len = payload_len;
+                            } else {
+                                *ack_data_len = 0;
+                            }
+                        }
+                        return confirmation_code;
+                    }
+                }
             }
-            prev = curr;
         }
     }
-
-    if (!sync_found) {
-        if (bytes_seen > 0) {
-            ESP_LOGW(TAG, "AS608 UART read %d bytes, but 0xEF01 sync not matched (last: 0x%02X, 0x%02X)",
-                     bytes_seen, prev, curr);
-        }
-        return FINGERPRINT_TIMEOUT;
-    }
-
-    // 2. Read remaining header: 4 bytes address + 1 byte PID + 2 bytes length = 7 bytes
-    uint8_t hdr_rest[7];
-    int remaining_ms = timeout_ms - (int)(esp_timer_get_time() / 1000 - start_time);
-    if (remaining_ms < 50) remaining_ms = 50;
-
-    int read_bytes = uart_read_bytes(m_uart_num, hdr_rest, 7, pdMS_TO_TICKS(remaining_ms));
-    if (read_bytes < 7) {
-        return FINGERPRINT_TIMEOUT;
-    }
-
-    uint8_t pid = hdr_rest[4];
-    if (pid != AS608_ACK_PACKET) {
-        ESP_LOGW(TAG, "Expected ACK PID 0x07, got 0x%02X", pid);
-        return FINGERPRINT_PACKETRECIEVEERR;
-    }
-
-    uint16_t packet_len = ((uint16_t)hdr_rest[5] << 8) | hdr_rest[6];
-    if (packet_len < 3 || packet_len > 64) {
-        ESP_LOGW(TAG, "Invalid packet length: %d", packet_len);
-        return FINGERPRINT_PACKETRECIEVEERR;
-    }
-
-    // 3. Read body: confirmation_code + data_bytes + 2-byte checksum
-    uint8_t body[64];
-    remaining_ms = timeout_ms - (int)(esp_timer_get_time() / 1000 - start_time);
-    if (remaining_ms < 50) remaining_ms = 50;
-
-    read_bytes = uart_read_bytes(m_uart_num, body, packet_len, pdMS_TO_TICKS(remaining_ms));
-    if (read_bytes < packet_len) {
-        return FINGERPRINT_TIMEOUT;
-    }
-
-    // 4. Validate 16-bit checksum (PID + len_hi + len_lo + body bytes)
-    uint16_t calc_sum = pid + hdr_rest[5] + hdr_rest[6];
-    for (uint16_t i = 0; i < packet_len - 2; i++) {
-        calc_sum += body[i];
-    }
-    uint16_t rx_sum = ((uint16_t)body[packet_len - 2] << 8) | body[packet_len - 1];
-
-    if (calc_sum != rx_sum) {
-        ESP_LOGW(TAG, "AS608 checksum mismatch: calc=0x%04X, rx=0x%04X", calc_sum, rx_sum);
-        return FINGERPRINT_PACKETRECIEVEERR;
-    }
-
-    uint8_t confirmation_code = body[0];
-    uint16_t data_bytes = packet_len - 3;
-
-    if (ack_data && ack_data_len) {
-        if (*ack_data_len >= data_bytes) {
-            std::memcpy(ack_data, &body[1], data_bytes);
-            *ack_data_len = data_bytes;
-        } else {
-            *ack_data_len = 0;
-        }
-    }
-
-    return confirmation_code;
+    return FINGERPRINT_TIMEOUT;
 }
 
 bool AS608Fingerprint::verifyPassword(uint32_t password) {
