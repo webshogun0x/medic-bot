@@ -239,8 +239,9 @@ void DisplayComm::sendSensorData(const vital_readings_t *v) {
     if (!v) return;
     sendRaw(
         "{\"type\":\"SENSOR_DATA\",\"heart_rate\":%.1f,\"spo2\":%.1f,\"temperature\":%.1f,"
-        "\"weight\":%.1f,\"height\":%.2f,\"bmi\":%.1f}\n",
-        v->heart_rate, v->spo2, v->temperature, v->weight, v->height_laser, v->bmi_laser
+        "\"weight\":%.1f,\"height\":%.2f,\"bmi\":%.1f,\"height_sonar\":%.2f,\"bmi_sonar\":%.1f}\n",
+        v->heart_rate, v->spo2, v->temperature, v->weight, v->height_laser, v->bmi_laser,
+        v->height_sonar, v->bmi_sonar
     );
 }
 

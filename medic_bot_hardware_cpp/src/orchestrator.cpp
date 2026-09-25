@@ -608,36 +608,63 @@ void KioskOrchestrator::processEvent(const sys_event_t &evt) {
         }
 
         case EVT_ESPNOW_HEIGHT_READY: {
-            float h_cm = (evt.payload.espnow_pkt.magic == ESPNOW_MAGIC_BYTE) ?
-                         evt.payload.espnow_pkt.data.height : evt.payload.espnow_node_data.val;
-            m_latestVitals.height_sonar = h_cm / 100.0f;
-            m_latestVitals.height_laser = m_latestVitals.height_sonar;
-            ESP_LOGI(TAG, "Orchestrator Step 2 Complete: Height = %.1f cm", h_cm);
+            float h_sonar_cm = 0.0f;
+            float h_laser_cm = 0.0f;
 
-            // Step 3: Move Stepper carriage to forehead level
-            getEspNow().moveCarriage(h_cm);
+            if (evt.payload.espnow_pkt.magic == ESPNOW_MAGIC_BYTE) {
+                h_sonar_cm = evt.payload.espnow_pkt.data.dual_height.height_sonar_cm;
+                h_laser_cm = evt.payload.espnow_pkt.data.dual_height.height_laser_cm;
+                if (h_sonar_cm <= 0.0f) h_sonar_cm = evt.payload.espnow_pkt.data.height;
+                if (h_laser_cm <= 0.0f) h_laser_cm = h_sonar_cm;
+            } else {
+                h_sonar_cm = evt.payload.espnow_node_data.val;
+                h_laser_cm = h_sonar_cm;
+            }
+
+            m_latestVitals.height_sonar = h_sonar_cm / 100.0f;
+            m_latestVitals.height_laser = h_laser_cm / 100.0f;
+            ESP_LOGI(TAG, "Orchestrator Step 2 Complete: Height Sonar=%.1f cm, Laser=%.1f cm", h_sonar_cm, h_laser_cm);
+
+            // Step 3: Move Stepper carriage to forehead level with closed-loop Gantry tracking
+            getEspNow().moveCarriage(h_sonar_cm > 0.0f ? h_sonar_cm : h_laser_cm);
             break;
         }
 
         case EVT_ESPNOW_STEPPER_ACK:
-            ESP_LOGI(TAG, "Orchestrator Step 3 Complete: Stepper carriage aligned");
-            // Step 4: Command Carriage node to measure forehead temperature
+            ESP_LOGI(TAG, "Orchestrator Step 3 Complete: Gantry Sonar confirmed carriage aligned at forehead level");
+            // Step 4: Command Carriage node to measure non-contact forehead temperature
             getEspNow().requestTemperature();
             break;
 
         case EVT_ESPNOW_TEMP_READY: {
-            float temp = (evt.payload.espnow_pkt.magic == ESPNOW_MAGIC_BYTE) ?
-                         evt.payload.espnow_pkt.data.temperature : evt.payload.espnow_node_data.val;
-            m_latestVitals.temperature = temp;
-            ESP_LOGI(TAG, "Orchestrator Step 4 Complete: Forehead Temp = %.1f C", temp);
+            float body_temp = 0.0f;
+            float amb_temp = 0.0f;
+
+            if (evt.payload.espnow_pkt.magic == ESPNOW_MAGIC_BYTE) {
+                body_temp = evt.payload.espnow_pkt.data.dual_temp.body_temp;
+                amb_temp = evt.payload.espnow_pkt.data.dual_temp.ambient_temp;
+                if (body_temp <= 0.0f) body_temp = evt.payload.espnow_pkt.data.temperature;
+            } else {
+                body_temp = evt.payload.espnow_node_data.val;
+                amb_temp = 25.0f;
+            }
+
+            m_latestVitals.temperature = body_temp;
+            ESP_LOGI(TAG, "Orchestrator Step 4 Complete: Forehead Body Temp = %.1f C, Ambient = %.1f C", body_temp, amb_temp);
 
             // Step 5: Command Stepper to return carriage home
             getEspNow().returnCarriageHome();
 
-            // Calculate BMI
-            if (m_latestVitals.height_laser > 0.5f && m_latestVitals.weight > 10.0f) {
-                m_latestVitals.bmi_laser = m_latestVitals.weight / (m_latestVitals.height_laser * m_latestVitals.height_laser);
-                m_latestVitals.bmi_sonar = m_latestVitals.bmi_laser;
+            // Calculate BMI (Sonar and Laser)
+            if (m_latestVitals.weight > 10.0f) {
+                if (m_latestVitals.height_sonar > 0.5f) {
+                    m_latestVitals.bmi_sonar = m_latestVitals.weight / (m_latestVitals.height_sonar * m_latestVitals.height_sonar);
+                }
+                if (m_latestVitals.height_laser > 0.5f) {
+                    m_latestVitals.bmi_laser = m_latestVitals.weight / (m_latestVitals.height_laser * m_latestVitals.height_laser);
+                } else {
+                    m_latestVitals.bmi_laser = m_latestVitals.bmi_sonar;
+                }
             }
             getDisplay().sendSensorData(&m_latestVitals);
             break;
@@ -649,9 +676,15 @@ void KioskOrchestrator::processEvent(const sys_event_t &evt) {
             if (m_latestVitals.temperature <= 0.0f) {
                 m_latestVitals.temperature = evt.payload.oximeter.temperature;
             }
-            if (m_latestVitals.height_laser > 0.5f && m_latestVitals.weight > 10.0f) {
-                m_latestVitals.bmi_laser = m_latestVitals.weight / (m_latestVitals.height_laser * m_latestVitals.height_laser);
-                m_latestVitals.bmi_sonar = m_latestVitals.bmi_laser;
+            if (m_latestVitals.weight > 10.0f) {
+                if (m_latestVitals.height_sonar > 0.5f) {
+                    m_latestVitals.bmi_sonar = m_latestVitals.weight / (m_latestVitals.height_sonar * m_latestVitals.height_sonar);
+                }
+                if (m_latestVitals.height_laser > 0.5f) {
+                    m_latestVitals.bmi_laser = m_latestVitals.weight / (m_latestVitals.height_laser * m_latestVitals.height_laser);
+                } else {
+                    m_latestVitals.bmi_laser = m_latestVitals.bmi_sonar;
+                }
             }
             getDisplay().sendSensorData(&m_latestVitals);
             getDisplay().sendPrompt("Vitals complete. Please input blood pressure on screen.");

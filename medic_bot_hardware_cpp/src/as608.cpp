@@ -216,18 +216,18 @@ bool AS608Fingerprint::verifyPassword(uint32_t password) {
 
 uint8_t AS608Fingerprint::getImage() {
     sendPacket(CMD_GET_IMAGE, nullptr, 0);
-    return recvAck(nullptr, nullptr, 300);
+    return recvAck(nullptr, nullptr, 1500);
 }
 
 uint8_t AS608Fingerprint::image2Tz(uint8_t slot) {
     uint8_t param = slot;
     sendPacket(CMD_IMAGE_2_TZ, &param, 1);
-    return recvAck(nullptr, nullptr, 500);
+    return recvAck(nullptr, nullptr, 1500);
 }
 
 uint8_t AS608Fingerprint::createModel() {
     sendPacket(CMD_REG_MODEL, nullptr, 0);
-    return recvAck(nullptr, nullptr, 500);
+    return recvAck(nullptr, nullptr, 1500);
 }
 
 uint8_t AS608Fingerprint::storeModel(uint8_t slot, uint16_t id) {
@@ -237,7 +237,7 @@ uint8_t AS608Fingerprint::storeModel(uint8_t slot, uint16_t id) {
         (uint8_t)(id & 0xFF)
     };
     sendPacket(CMD_STORE, params, 3);
-    return recvAck(nullptr, nullptr, 500);
+    return recvAck(nullptr, nullptr, 1500);
 }
 
 uint8_t AS608Fingerprint::fingerFastSearch(uint8_t slot, uint16_t &matched_id, uint16_t &score) {
@@ -250,7 +250,7 @@ uint8_t AS608Fingerprint::fingerFastSearch(uint8_t slot, uint16_t &matched_id, u
 
     uint8_t ack_data[4];
     uint16_t ack_len = sizeof(ack_data);
-    uint8_t res = recvAck(ack_data, &ack_len, 1000);
+    uint8_t res = recvAck(ack_data, &ack_len, 2000);
 
     if (res == FINGERPRINT_OK && ack_len >= 4) {
         matched_id = ((uint16_t)ack_data[0] << 8) | ack_data[1];
@@ -266,12 +266,12 @@ uint8_t AS608Fingerprint::deleteModel(uint16_t id) {
         0x00, 0x01
     };
     sendPacket(CMD_DELETE_MODEL, params, 4);
-    return recvAck(nullptr, nullptr, 500);
+    return recvAck(nullptr, nullptr, 1000);
 }
 
 uint8_t AS608Fingerprint::emptyDatabase() {
     sendPacket(CMD_EMPTY_DB, nullptr, 0);
-    return recvAck(nullptr, nullptr, 1000);
+    return recvAck(nullptr, nullptr, 2000);
 }
 
 } // namespace medicbot

@@ -47,10 +47,22 @@ typedef struct __attribute__((packed)) {
         float height;
         float temperature;
         struct {
+            float height_sonar_cm;
+            float height_laser_cm;
+        } dual_height;
+        struct {
+            float body_temp;
+            float ambient_temp;
+        } dual_temp;
+        struct {
             float target_height_cm;
             uint16_t speed;
             uint16_t microsteps;
         } stepper_cmd;
+        struct {
+            float current_position_cm;
+            uint8_t aligned;
+        } gantry_pos;
         uint8_t raw_payload[16];
     } data;
 } espnow_kiosk_packet_t;
