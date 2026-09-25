@@ -118,10 +118,11 @@ static void fp_enroll_task(void *arg) {
     uint8_t slot_id = static_cast<uint8_t>(reinterpret_cast<uintptr_t>(arg));
     ESP_LOGI(TAG, "FP enrollment task started for slot #%d", slot_id);
 
-    getDisplay().sendPrompt("Place finger on sensor (Scan 1/2)...");
+    // 1. Send ENROLL_STEP1 to transition display to UI_SCREEN_SIGNUP_FP1
+    getDisplay().sendRaw("{\"type\":\"ENROLL_STEP1\",\"message\":\"Place finger on scanner (Scan 1/2)...\"}\n");
 
-    // Scan 1
-    int timeout = 20;
+    // Scan 1 with 30s timeout (100 * 300ms = 30s)
+    int timeout = 100;
     bool step1_ok = false;
     while (timeout-- > 0 && !s_fp_abort) {
         if (getFingerprintSensor().getImage() == FINGERPRINT_OK) {
@@ -134,7 +135,8 @@ static void fp_enroll_task(void *arg) {
     }
 
     if (!step1_ok || s_fp_abort) {
-        getDisplay().sendTyped("ENROLL_FAILED", "Scan 1 timed out");
+        ESP_LOGW(TAG, "Fingerprint enrollment step 1 timed out or cancelled");
+        getDisplay().sendRaw("{\"type\":\"ENROLL_FAILED\",\"message\":\"Scan 1 timed out. Please try again.\"}\n");
         s_fp_running = false;
         s_fp_task = nullptr;
         vTaskDelete(nullptr);
@@ -143,10 +145,12 @@ static void fp_enroll_task(void *arg) {
 
     getDisplay().sendPrompt("Remove finger...");
     vTaskDelay(pdMS_TO_TICKS(1500));
-    getDisplay().sendPrompt("Place same finger again (Scan 2/2)...");
 
-    // Scan 2
-    timeout = 20;
+    // 2. Send ENROLL_STEP2 to transition display to UI_SCREEN_SIGNUP_FP2
+    getDisplay().sendRaw("{\"type\":\"ENROLL_STEP2\",\"message\":\"Place same finger again (Scan 2/2)...\"}\n");
+
+    // Scan 2 with 30s timeout
+    timeout = 100;
     bool step2_ok = false;
     while (timeout-- > 0 && !s_fp_abort) {
         if (getFingerprintSensor().getImage() == FINGERPRINT_OK) {
@@ -159,7 +163,8 @@ static void fp_enroll_task(void *arg) {
     }
 
     if (!step2_ok || s_fp_abort) {
-        getDisplay().sendTyped("ENROLL_FAILED", "Scan 2 timed out");
+        ESP_LOGW(TAG, "Fingerprint enrollment step 2 timed out or cancelled");
+        getDisplay().sendRaw("{\"type\":\"ENROLL_FAILED\",\"message\":\"Scan 2 timed out. Please try again.\"}\n");
         s_fp_running = false;
         s_fp_task = nullptr;
         vTaskDelete(nullptr);
@@ -170,6 +175,7 @@ static void fp_enroll_task(void *arg) {
     if (getFingerprintSensor().createModel() == FINGERPRINT_OK &&
         getFingerprintSensor().storeModel(1, slot_id) == FINGERPRINT_OK) {
         ESP_LOGI(TAG, "Fingerprint enrolled and saved in slot #%d", slot_id);
+        getDisplay().sendRaw("{\"type\":\"ENROLL_DONE\",\"message\":\"Biometrics Enrolled Successfully!\"}\n");
         if (g_sys_event_queue) {
             sys_event_t evt;
             memset(&evt, 0, sizeof(evt));
@@ -179,6 +185,7 @@ static void fp_enroll_task(void *arg) {
         }
     } else {
         ESP_LOGE(TAG, "Failed to create model or store in slot #%d", slot_id);
+        getDisplay().sendRaw("{\"type\":\"ENROLL_FAILED\",\"message\":\"Failed to create or store biometric model\"}\n");
         if (g_sys_event_queue) {
             sys_event_t evt;
             memset(&evt, 0, sizeof(evt));
