@@ -103,18 +103,26 @@ void DisplayComm::rxTask() {
                                        (cJSON_IsString(cmd) ? cmd->valuestring : nullptr);
 
                         if (t) {
-                            if (strcmp(t, "DISPLAY_READY") == 0) {
+                            if (strcmp(t, "ACK") == 0) {
+                                cJSON *rec = cJSON_GetObjectItem(root, "received");
+                                const char *r = cJSON_IsString(rec) ? rec->valuestring : "OK";
+                                ESP_LOGI(TAG, "Display ACK received for: [%s]", r);
+                            } else if (strcmp(t, "DISPLAY_READY") == 0) {
                                 evt.type = EVT_DISPLAY_READY;
                                 valid = true;
+                                sendTyped("ACK", "DISPLAY_READY");
                             } else if (strcmp(t, "START_LOGIN") == 0) {
                                 evt.type = EVT_CMD_START_LOGIN;
                                 valid = true;
+                                sendTyped("ACK", "START_LOGIN");
                             } else if (strcmp(t, "START_ENROLLMENT") == 0) {
                                 evt.type = EVT_CMD_START_ENROLLMENT;
                                 valid = true;
+                                sendTyped("ACK", "START_ENROLLMENT");
                             } else if (strcmp(t, "READ_OXIMETER") == 0 || strcmp(t, "START_VITALS_MEASUREMENT") == 0) {
                                 evt.type = EVT_CMD_READ_OXIMETER;
                                 valid = true;
+                                sendTyped("ACK", "READ_OXIMETER");
                             } else if (strcmp(t, "MEASUREMENTS_DONE") == 0 || strcmp(t, "SAVE_READINGS") == 0) {
                                 evt.type = EVT_CMD_SAVE_READINGS;
                                 cJSON *sys = cJSON_GetObjectItem(root, "systolic");
@@ -122,12 +130,15 @@ void DisplayComm::rxTask() {
                                 if (cJSON_IsNumber(sys)) evt.payload.vitals.systolic = sys->valueint;
                                 if (cJSON_IsNumber(dia)) evt.payload.vitals.diastolic = dia->valueint;
                                 valid = true;
+                                sendTyped("ACK", "SAVE_READINGS");
                             } else if (strcmp(t, "BACK") == 0) {
                                 evt.type = EVT_CMD_BACK;
                                 valid = true;
+                                sendTyped("ACK", "BACK");
                             } else if (strcmp(t, "LOGOUT") == 0) {
                                 evt.type = EVT_CMD_LOGOUT;
                                 valid = true;
+                                sendTyped("ACK", "LOGOUT");
                             }
                         }
                         cJSON_Delete(root);

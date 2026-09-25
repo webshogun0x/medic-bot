@@ -47,6 +47,15 @@ static void parse_json_line(const char *json_str) {
     }
     const char *type = type_item->valuestring;
 
+    if (strcmp(type, "ACK") == 0) {
+        cJSON *rec = cJSON_GetObjectItem(root, "received");
+        cJSON *cmd = cJSON_GetObjectItem(root, "cmd");
+        const char *r = cJSON_IsString(rec) ? rec->valuestring : (cJSON_IsString(cmd) ? cmd->valuestring : "OK");
+        ESP_LOGI(TAG, "Main Controller ACK received for: %s", r);
+        cJSON_Delete(root);
+        return;
+    }
+
     if (strcmp(type, "BOOT_PROGRESS") == 0) {
         cJSON *pct = cJSON_GetObjectItem(root, "percent");
         cJSON *task = cJSON_GetObjectItem(root, "task");
@@ -64,8 +73,9 @@ static void parse_json_line(const char *json_str) {
 
         ui_boot_update_status(p, t, c, w, cl, s);
         if (p >= 100) {
-            vTaskDelay(pdMS_TO_TICKS(500));
+            vTaskDelay(pdMS_TO_TICKS(300));
             ui_show_screen(UI_SCREEN_IDLE);
+            display_comm_send_cmd("{\"type\":\"ACK\",\"received\":\"BOOT_PROGRESS\",\"status\":\"IDLE_ACTIVE\"}");
         }
     } else if (strcmp(type, "SYSTEM_STATUS") == 0 || strcmp(type, "BOOT_COMPLETE") == 0) {
         cJSON *wifi = cJSON_GetObjectItem(root, "wifi_connected");
@@ -73,8 +83,9 @@ static void parse_json_line(const char *json_str) {
         bool wifi_ok = cJSON_IsTrue(wifi);
         bool fb_ok = cJSON_IsTrue(fb);
         ui_boot_update_status(100, "All Subsystems Connected", 2, wifi_ok ? 2 : 1, fb_ok ? 2 : 1, 2);
-        vTaskDelay(pdMS_TO_TICKS(500));
+        vTaskDelay(pdMS_TO_TICKS(300));
         ui_show_screen(UI_SCREEN_IDLE);
+        display_comm_send_cmd("{\"type\":\"ACK\",\"received\":\"SYSTEM_STATUS\",\"status\":\"IDLE_ACTIVE\"}");
     } else if (strcmp(type, "USER_DATA") == 0) {
         cJSON *name = cJSON_GetObjectItem(root, "user_name");
         cJSON *id = cJSON_GetObjectItem(root, "user_medical_id");
@@ -88,6 +99,7 @@ static void parse_json_line(const char *json_str) {
 
         ui_dashboard_update_vitals(&g_active_patient);
         ui_show_screen(UI_SCREEN_DASHBOARD);
+        display_comm_send_cmd("{\"type\":\"ACK\",\"received\":\"USER_DATA\"}");
     } else if (strcmp(type, "SENSOR_DATA") == 0) {
         cJSON *hr = cJSON_GetObjectItem(root, "heart_rate");
         cJSON *spo2 = cJSON_GetObjectItem(root, "spo2");
@@ -104,33 +116,42 @@ static void parse_json_line(const char *json_str) {
         if (cJSON_IsNumber(bmi)) g_active_patient.bmi = (float)bmi->valuedouble;
 
         ui_dashboard_update_vitals(&g_active_patient);
+        display_comm_send_cmd("{\"type\":\"ACK\",\"received\":\"SENSOR_DATA\"}");
     } else if (strcmp(type, "PROMPT") == 0) {
         cJSON *msg = cJSON_GetObjectItem(root, "message");
         if (cJSON_IsString(msg)) {
             ui_show_toast(msg->valuestring);
         }
+        display_comm_send_cmd("{\"type\":\"ACK\",\"received\":\"PROMPT\"}");
     } else if (strcmp(type, "CARD_DETECTED") == 0) {
         ui_show_screen(UI_SCREEN_LOGIN_FP);
         ui_show_toast("Card Verified! Place finger on scanner.");
+        display_comm_send_cmd("{\"type\":\"ACK\",\"received\":\"CARD_DETECTED\"}");
     } else if (strcmp(type, "FINGERPRINT_SUCCESS") == 0) {
         ui_show_toast("Biometric Verified! Welcome.");
         ui_show_screen(UI_SCREEN_DASHBOARD);
+        display_comm_send_cmd("{\"type\":\"ACK\",\"received\":\"FINGERPRINT_SUCCESS\"}");
     } else if (strcmp(type, "FINGERPRINT_ERROR") == 0) {
         cJSON *msg = cJSON_GetObjectItem(root, "message");
         ui_show_toast(cJSON_IsString(msg) ? msg->valuestring : "Fingerprint error. Try again.");
+        display_comm_send_cmd("{\"type\":\"ACK\",\"received\":\"FINGERPRINT_ERROR\"}");
     } else if (strcmp(type, "ENROLL_STEP1") == 0) {
         ui_show_screen(UI_SCREEN_SIGNUP_FP1);
         ui_show_toast("Scan 1 of 2: Place finger on scanner");
+        display_comm_send_cmd("{\"type\":\"ACK\",\"received\":\"ENROLL_STEP1\"}");
     } else if (strcmp(type, "ENROLL_STEP2") == 0) {
         ui_show_screen(UI_SCREEN_SIGNUP_FP2);
         ui_show_toast("Scan 2 of 2: Place same finger again");
+        display_comm_send_cmd("{\"type\":\"ACK\",\"received\":\"ENROLL_STEP2\"}");
     } else if (strcmp(type, "ENROLL_DONE") == 0) {
         ui_show_toast("✅ Biometrics Enrolled! Loading Dashboard...");
         ui_show_screen(UI_SCREEN_DASHBOARD);
+        display_comm_send_cmd("{\"type\":\"ACK\",\"received\":\"ENROLL_DONE\"}");
     } else if (strcmp(type, "ENROLL_FAILED") == 0) {
         cJSON *msg = cJSON_GetObjectItem(root, "message");
         ui_show_toast(cJSON_IsString(msg) ? msg->valuestring : "❌ Enrollment Failed.");
         ui_show_screen(UI_SCREEN_IDLE);
+        display_comm_send_cmd("{\"type\":\"ACK\",\"received\":\"ENROLL_FAILED\"}");
     }
 
     cJSON_Delete(root);
