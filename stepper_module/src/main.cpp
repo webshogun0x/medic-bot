@@ -189,6 +189,8 @@ static void send_espnow_response(uint8_t opcode, float current_height, uint8_t s
     pkt.seq = ++g_packet_seq;
     pkt.status = status;
     pkt.data.height = current_height;
+    pkt.data.gantry_pos.current_position_cm = current_height;
+    pkt.data.gantry_pos.aligned = (status == 0 ? 1 : 0);
 
     esp_err_t res = esp_now_send(g_broadcast_mac, (uint8_t *)&pkt, sizeof(pkt));
     if (res == ESP_OK) {

@@ -164,7 +164,7 @@ static float measure_gantry_height_cm() {
  * Multi-Sensor Fusion Engine for Patient Standing Height
  * Fuses 3-Point Ultrasonic Array + Center Optical Laser ToF
  * ========================================================================= */
-static float measure_patient_height_cm() {
+static float measure_patient_height_cm(float &out_sonar_ht_cm, float &out_laser_ht_cm) {
     Serial.printf("[%s] Starting Multi-Sensor Height Measurement...\n", TAG);
 
     const int NUM_BURSTS = 4;
@@ -191,65 +191,47 @@ static float measure_patient_height_cm() {
         tof_readings[b] = read_laser_distance_cm();
         delay(ACOUSTIC_STAGGER_MS);
 
-        Serial.printf("[%s] Burst %d -> S1(12/13): %.1f | S2(14/27): %.1f | S3(26/25): %.1f | ToF(21/22): %.1f\n",
+        Serial.printf("[%s] Burst %d -> S1: %.1f | S2: %.1f | S3: %.1f | ToF: %.1f\n",
                       TAG, b + 1, s1_readings[b], s2_readings[b], s3_readings[b], tof_readings[b]);
     }
 
-    // Identify candidate minimum distances (crown of head is closest to overhead mount)
-    float valid_distances[NUM_BURSTS * 4];
-    int valid_count = 0;
-
+    // Calculate Sonar average height
+    float sonar_sum = 0.0f;
+    int sonar_count = 0;
     for (int b = 0; b < NUM_BURSTS; b++) {
-        if (s1_readings[b] > 0.0f) valid_distances[valid_count++] = s1_readings[b];
-        if (s2_readings[b] > 0.0f) valid_distances[valid_count++] = s2_readings[b];
-        if (s3_readings[b] > 0.0f) valid_distances[valid_count++] = s3_readings[b];
-        if (tof_readings[b] > 0.0f) valid_distances[valid_count++] = tof_readings[b];
+        if (s1_readings[b] > 0.0f) { sonar_sum += s1_readings[b]; sonar_count++; }
+        if (s2_readings[b] > 0.0f) { sonar_sum += s2_readings[b]; sonar_count++; }
+        if (s3_readings[b] > 0.0f) { sonar_sum += s3_readings[b]; sonar_count++; }
     }
+    float sonar_crown_dist = (sonar_count > 0) ? (sonar_sum / (float)sonar_count) : 0.0f;
+    out_sonar_ht_cm = (sonar_crown_dist > 0.0f) ? (g_stand_height_cm - sonar_crown_dist) : 0.0f;
 
-    if (valid_count < 3) {
-        Serial.printf("[%s] Error: Insufficient valid distance echoes detected (%d readings)\n", TAG, valid_count);
-        return 0.0f;
+    // Calculate Laser average height
+    float laser_sum = 0.0f;
+    int laser_count = 0;
+    for (int b = 0; b < NUM_BURSTS; b++) {
+        if (tof_readings[b] > 0.0f) { laser_sum += tof_readings[b]; laser_count++; }
     }
+    float laser_crown_dist = (laser_count > 0) ? (laser_sum / (float)laser_count) : 0.0f;
+    out_laser_ht_cm = (laser_crown_dist > 0.0f) ? (g_stand_height_cm - laser_crown_dist) : out_sonar_ht_cm;
 
-    // Simple Bubble Sort to find median and lowest cluster
-    for (int i = 0; i < valid_count - 1; i++) {
-        for (int j = 0; j < valid_count - i - 1; j++) {
-            if (valid_distances[j] > valid_distances[j + 1]) {
-                float tmp = valid_distances[j];
-                valid_distances[j] = valid_distances[j + 1];
-                valid_distances[j + 1] = tmp;
-            }
-        }
-    }
+    float fused_ht = (out_sonar_ht_cm > 0.0f) ? out_sonar_ht_cm : out_laser_ht_cm;
 
-    // Discard upper quartile (floor/empty platform echoes) and average top 3 closest readings
-    int sample_size = (valid_count >= 5) ? 3 : valid_count;
-    float sum_head_dist = 0.0f;
-    for (int i = 0; i < sample_size; i++) {
-        sum_head_dist += valid_distances[i];
-    }
-    float crown_dist_cm = sum_head_dist / (float)sample_size;
+    Serial.printf("[%s] Fusion Result -> Sonar Height: %.1f cm | Laser Height: %.1f cm | Stand: %.1f cm\n",
+                  TAG, out_sonar_ht_cm, out_laser_ht_cm, g_stand_height_cm);
 
-    // Calculate standing height from stand ceiling geometry
-    float patient_height_cm = g_stand_height_cm - crown_dist_cm;
+    return fused_ht;
+}
 
-    Serial.printf("[%s] Fusion Result -> Crown Distance: %.1f cm | Stand: %.1f cm | Calculated Height: %.1f cm\n",
-                  TAG, crown_dist_cm, g_stand_height_cm, patient_height_cm);
-
-    // Sanity boundary validation
-    if (patient_height_cm < MIN_VALID_PATIENT_HT_CM || patient_height_cm > MAX_VALID_PATIENT_HT_CM) {
-        Serial.printf("[%s] Warning: Calculated height %.1f cm outside clinical limits (%.0f - %.0f cm)\n",
-                      TAG, patient_height_cm, MIN_VALID_PATIENT_HT_CM, MAX_VALID_PATIENT_HT_CM);
-        return 0.0f;
-    }
-
-    return patient_height_cm;
+static float measure_patient_height_cm() {
+    float s = 0.0f, l = 0.0f;
+    return measure_patient_height_cm(s, l);
 }
 
 /* =========================================================================
  * Master-Worker ESP-NOW Communication Protocol
  * ========================================================================= */
-static void send_espnow_response(uint8_t opcode, float value, uint8_t status) {
+static void send_espnow_response(uint8_t opcode, float value, uint8_t status, float laser_val = 0.0f) {
     espnow_kiosk_packet_t pkt;
     memset(&pkt, 0, sizeof(pkt));
 
@@ -259,7 +241,18 @@ static void send_espnow_response(uint8_t opcode, float value, uint8_t status) {
     pkt.opcode = opcode;
     pkt.seq = ++g_packet_seq;
     pkt.status = status;
-    pkt.data.height = value;
+
+    if (opcode == RESP_HEIGHT) {
+        pkt.data.dual_height.height_sonar_cm = value;
+        pkt.data.dual_height.height_laser_cm = (laser_val > 0.0f) ? laser_val : value;
+        pkt.data.height = value;
+    } else if (opcode == RESP_GANTRY_POS) {
+        pkt.data.gantry_pos.current_position_cm = value;
+        pkt.data.gantry_pos.aligned = (status == 0 ? 1 : 0);
+        pkt.data.height = value;
+    } else {
+        pkt.data.height = value;
+    }
 
     esp_err_t result = esp_now_send(g_broadcast_mac, (uint8_t *)&pkt, sizeof(pkt));
     if (result == ESP_OK) {
@@ -478,9 +471,10 @@ void loop() {
     if (g_trigger_patient_measurement) {
         g_trigger_patient_measurement = false;
 
-        float ht = measure_patient_height_cm();
-        uint8_t status = (ht > 0.0f) ? 0 : 1; // 0 = OK, 1 = Error
-        send_espnow_response(RESP_HEIGHT, ht, status);
+        float sonar_ht = 0.0f, laser_ht = 0.0f;
+        measure_patient_height_cm(sonar_ht, laser_ht);
+        uint8_t status = (sonar_ht > 0.0f || laser_ht > 0.0f) ? 0 : 1; // 0 = OK, 1 = Error
+        send_espnow_response(RESP_HEIGHT, sonar_ht, status, laser_ht);
     }
 
     // 2. Handle ESP-NOW Triggered Gantry Position Measurement

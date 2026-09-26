@@ -322,6 +322,8 @@ static void send_espnow_response(uint8_t opcode, float temp_c, uint8_t status) {
     pkt.seq = ++g_packet_seq;
     pkt.status = status;
     pkt.data.temperature = temp_c;
+    pkt.data.dual_temp.body_temp = temp_c;
+    pkt.data.dual_temp.ambient_temp = get_current_ambient_temp();
 
     int result = esp_now_send(g_broadcast_mac, (uint8_t *)&pkt, sizeof(pkt));
     if (result == 0) {
