@@ -60,7 +60,7 @@ static bool home_gantry_to_bottom() {
     // If already pressing switch, back off slightly first
     if (digitalRead(PIN_LIMIT_HOME_BOTTOM) == LOW) {
         Serial.printf("[%s] Switch already depressed. Backing off...\n", TAG);
-        g_stepper.move(1000); // Step upwards
+        g_stepper.move((long)(0.5f * STEPS_PER_CM)); // Step upwards ~5mm
         while (g_stepper.distanceToGo() != 0) {
             g_stepper.run();
             delayMicroseconds(100);
@@ -95,7 +95,7 @@ static bool home_gantry_to_bottom() {
 
     if (switch_hit) {
         // Back off 3 mm so switch contacts are not strained
-        g_stepper.move(600);
+        g_stepper.move((long)(0.3f * STEPS_PER_CM));
         while (g_stepper.distanceToGo() != 0) {
             g_stepper.run();
             yield();

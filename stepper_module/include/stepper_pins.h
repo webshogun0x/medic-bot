@@ -23,23 +23,21 @@
 #define PIN_STATUS_LED          2
 
 /* =========================================================================
- * Mechanical & Kinematic Parameters (NEMA Stepper + Lead Screw)
+ * Mechanical & Kinematic Calibration (Calibrated from physical measurement)
  * ========================================================================= */
-#define MOTOR_STEPS_PER_REV     200     // 1.8 deg step angle
-#define MICROSTEPS              8       // TB6600 DIP switch setting (1/8 microstepping)
-#define LEAD_SCREW_PITCH_MM     8.0f    // 8 mm travel per full shaft revolution
-#define STEPS_PER_MM            ((float)(MOTOR_STEPS_PER_REV * MICROSTEPS) / LEAD_SCREW_PITCH_MM) // 200 steps/mm
-#define STEPS_PER_CM            (STEPS_PER_MM * 10.0f) // 2000 steps/cm
+// Measured calibration: 10,000 steps moved 71.5 cm -> 10000 / 71.5 = 139.86 steps/cm
+#define STEPS_PER_CM            139.86f
+#define STEPS_PER_MM            (STEPS_PER_CM / 10.0f) // ~13.99 steps/mm
 
 // Direction configuration (adjust based on motor coil wiring)
 // true = Clockwise moves carriage UP, false = Clockwise moves carriage DOWN
 #define DIR_UP                  true
 #define DIR_DOWN                false
 
-// Motion Profile Limits
-#define MAX_SPEED_STEPS_SEC     4000.0f  // ~20 mm/s max speed
-#define ACCELERATION_STEPS_SEC2 2000.0f  // Smooth jerk-free ramp
-#define HOMING_SPEED_STEPS_SEC  1500.0f  // Gentle speed during switch homing
+// Motion Profile Limits (Configured for steady, smooth, clinical motion)
+#define MAX_SPEED_STEPS_SEC     600.0f   // ~4.3 cm/s steady, controlled travel
+#define ACCELERATION_STEPS_SEC2 400.0f   // Smooth, jerk-free acceleration ramp
+#define HOMING_SPEED_STEPS_SEC  350.0f   // Gentle homing speed (~2.5 cm/s)
 
 // Physical travel limits
 #define HOME_BASELINE_HEIGHT_CM 140.0f   // Gantry baseline resting height
