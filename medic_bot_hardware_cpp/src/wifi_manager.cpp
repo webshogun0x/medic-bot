@@ -47,7 +47,11 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base,
 
     if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START) {
         ESP_LOGI(TAG, "Wi-Fi station started, initiating connection...");
+        esp_wifi_set_ps(WIFI_PS_NONE);
         esp_wifi_connect();
+    } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_CONNECTED) {
+        esp_wifi_set_ps(WIFI_PS_NONE);
+        ESP_LOGI(TAG, "Wi-Fi station connected to AP (Modem Sleep DISABLED)");
     } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
         mgr->setConnected(false);
         ESP_LOGW(TAG, "Wi-Fi disconnected. Scheduling reconnection...");
@@ -241,6 +245,7 @@ esp_err_t WifiManager::begin(const char *ssid, const char *password) {
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_config));
     ESP_ERROR_CHECK(esp_wifi_start());
+    ESP_ERROR_CHECK(esp_wifi_set_ps(WIFI_PS_NONE));
 
     m_initialized = true;
     ESP_LOGI(TAG, "Wi-Fi Station Initialized targeting SSID: %s", loaded_ssid);

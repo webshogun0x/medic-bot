@@ -71,7 +71,7 @@ static bool sync_reading_to_firebase(const vital_readings_t *r) {
     esp_http_client_config_t config = {
         .url = url,
         .method = HTTP_METHOD_PUT,
-        .timeout_ms = 5000,
+        .timeout_ms = 12000,
         .event_handler = http_event_handler,
         .crt_bundle_attach = esp_crt_bundle_attach,
     };
@@ -107,7 +107,7 @@ static bool fetch_user_from_firebase(const char *rfid, user_profile_t *out_user)
     esp_http_client_config_t config = {
         .url = url,
         .method = HTTP_METHOD_GET,
-        .timeout_ms = 5000,
+        .timeout_ms = 12000,
         .event_handler = http_event_handler,
         .crt_bundle_attach = esp_crt_bundle_attach,
     };
@@ -216,7 +216,7 @@ void CloudSync::workerTask() {
                             esp_http_client_config_t cfg = {
                                 .url = url,
                                 .method = HTTP_METHOD_PATCH,
-                                .timeout_ms = 5000,
+                                .timeout_ms = 12000,
                                 .crt_bundle_attach = esp_crt_bundle_attach,
                             };
                             esp_http_client_handle_t cl = esp_http_client_init(&cfg);
@@ -346,7 +346,7 @@ void CloudSync::testConnection() {
     esp_http_client_config_t config = {
         .url = url,
         .method = HTTP_METHOD_GET,
-        .timeout_ms = 8000,
+        .timeout_ms = 15000,
         .event_handler = http_event_handler,
         .crt_bundle_attach = esp_crt_bundle_attach,
     };
