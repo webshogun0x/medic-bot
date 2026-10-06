@@ -35,7 +35,7 @@
  * System Geometry & Calibration Constants
  * ========================================================================= */
 // Default overhead sensor mount height above the weight platform (in cm)
-#define DEFAULT_STAND_HEIGHT_CM 220.0f
+#define DEFAULT_STAND_HEIGHT_CM 213.0f
 
 // Sensor physical limits (in cm)
 #define MIN_MEASURABLE_DIST_CM  3.0f
@@ -43,7 +43,7 @@
 
 // Realistic human height boundaries for clinical validation (in cm)
 #define MIN_VALID_PATIENT_HT_CM 60.0f
-#define MAX_VALID_PATIENT_HT_CM 220.0f
+#define MAX_VALID_PATIENT_HT_CM 210.0f
 
 // Inter-sensor delay to prevent acoustic reflection cross-talk (in ms)
 #define ACOUSTIC_STAGGER_MS     15

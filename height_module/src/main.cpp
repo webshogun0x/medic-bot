@@ -154,8 +154,9 @@ static float measure_gantry_height_cm() {
 
     if (valid > 0) {
         float avg_dist = sum / (float)valid;
-        Serial.printf("[%s] Gantry Sonar: %.1f cm\n", TAG, avg_dist);
-        return avg_dist;
+        float carriage_ht = (avg_dist > 0.0f) ? (g_stand_height_cm - avg_dist) : 0.0f;
+        Serial.printf("[%s] Gantry Sonar Overhead Dist: %.1f cm -> Carriage Height: %.1f cm\n", TAG, avg_dist, carriage_ht);
+        return carriage_ht;
     }
     return -1.0f;
 }

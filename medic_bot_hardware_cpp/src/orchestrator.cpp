@@ -626,7 +626,14 @@ void KioskOrchestrator::processEvent(const sys_event_t &evt) {
             ESP_LOGI(TAG, "Orchestrator Step 2 Complete: Height Sonar=%.1f cm, Laser=%.1f cm", h_sonar_cm, h_laser_cm);
 
             // Step 3: Move Stepper carriage to forehead level with closed-loop Gantry tracking
-            getEspNow().moveCarriage(h_sonar_cm > 0.0f ? h_sonar_cm : h_laser_cm);
+            // Crown to forehead anatomical offset is ~10 cm
+            float patient_crown_ht = (h_sonar_cm > 0.0f) ? h_sonar_cm : h_laser_cm;
+            float forehead_target_ht = patient_crown_ht - 10.0f;
+            if (forehead_target_ht < 49.0f) {
+                forehead_target_ht = 49.0f; // Clamp to lower baseline
+            }
+            ESP_LOGI(TAG, "Step 3: Crown Height=%.1f cm -> Targeting Forehead at %.1f cm", patient_crown_ht, forehead_target_ht);
+            getEspNow().moveCarriage(forehead_target_ht);
             break;
         }
 

@@ -35,12 +35,12 @@
 #define DIR_DOWN                false
 
 // Motion Profile Limits (Configured for steady, smooth, clinical motion)
-#define MAX_SPEED_STEPS_SEC     600.0f   // ~4.3 cm/s steady, controlled travel
-#define ACCELERATION_STEPS_SEC2 400.0f   // Smooth, jerk-free acceleration ramp
-#define HOMING_SPEED_STEPS_SEC  350.0f   // Gentle homing speed (~2.5 cm/s)
+#define MAX_SPEED_STEPS_SEC     1200.0f  // ~8.6 cm/s steady, controlled travel
+#define ACCELERATION_STEPS_SEC2 800.0f   // Smooth, jerk-free acceleration ramp
+#define HOMING_SPEED_STEPS_SEC  500.0f   // Gentle homing speed (~3.6 cm/s)
 
 // Physical travel limits
-#define HOME_BASELINE_HEIGHT_CM 140.0f   // Gantry baseline resting height
-#define MAX_TRAVEL_CM           65.0f    // Maximum stroke travel above baseline (up to 205 cm)
+#define HOME_BASELINE_HEIGHT_CM 49.0f    // Lower limit switch physical height (49 cm from floor)
+#define MAX_TRAVEL_CM           155.0f   // Maximum stroke travel above baseline (up to 204 cm)
 
 #endif // STEPPER_PINS_H
