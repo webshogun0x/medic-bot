@@ -54,14 +54,23 @@ static bool sync_reading_to_firebase(const vital_readings_t *r) {
 
     cJSON *root = cJSON_CreateObject();
     cJSON_AddNumberToObject(root, "heart_rate", r->heart_rate);
+    cJSON_AddNumberToObject(root, "heartRate", r->heart_rate);
     cJSON_AddNumberToObject(root, "spo2", r->spo2);
     cJSON_AddNumberToObject(root, "temperature", r->temperature);
     cJSON_AddNumberToObject(root, "weight", r->weight);
     cJSON_AddNumberToObject(root, "height", r->height_laser);
+    cJSON_AddNumberToObject(root, "height_laser", r->height_laser);
+    cJSON_AddNumberToObject(root, "heightLaser", r->height_laser);
+    cJSON_AddNumberToObject(root, "height_sonar", r->height_sonar);
+    cJSON_AddNumberToObject(root, "heightSonar", r->height_sonar);
     cJSON_AddNumberToObject(root, "bmi", r->bmi_laser);
+    cJSON_AddNumberToObject(root, "bmi_laser", r->bmi_laser);
+    cJSON_AddNumberToObject(root, "bmiLaser", r->bmi_laser);
+    cJSON_AddNumberToObject(root, "bmi_sonar", r->bmi_sonar);
+    cJSON_AddNumberToObject(root, "bmiSonar", r->bmi_sonar);
     cJSON_AddNumberToObject(root, "systolic", r->systolic);
     cJSON_AddNumberToObject(root, "diastolic", r->diastolic);
-    cJSON_AddNumberToObject(root, "timestamp", static_cast<double>(time(nullptr)));
+    cJSON_AddNumberToObject(root, "timestamp", static_cast<double>(time(nullptr) * 1000.0));
 
     char *json_str = cJSON_PrintUnformatted(root);
     cJSON_Delete(root);
