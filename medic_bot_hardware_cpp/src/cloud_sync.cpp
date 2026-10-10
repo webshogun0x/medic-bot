@@ -44,13 +44,37 @@ static esp_err_t http_event_handler(esp_http_client_event_t *evt) {
     return ESP_OK;
 }
 
+static bool put_json_to_firebase(const char *path, const char *json_str) {
+    if (!path || !json_str) return false;
+
+    char url[256];
+    build_firebase_url(url, sizeof(url), path);
+
+    esp_http_client_config_t config = {
+        .url = url,
+        .method = HTTP_METHOD_PUT,
+        .timeout_ms = 12000,
+        .event_handler = http_event_handler,
+        .crt_bundle_attach = esp_crt_bundle_attach,
+    };
+
+    esp_http_client_handle_t client = esp_http_client_init(&config);
+    esp_http_client_set_header(client, "Content-Type", "application/json");
+    esp_http_client_set_post_field(client, json_str, strlen(json_str));
+
+    esp_err_t err = esp_http_client_perform(client);
+    int status_code = esp_http_client_get_status_code(client);
+    esp_http_client_cleanup(client);
+
+    return (err == ESP_OK && (status_code >= 200 && status_code < 300));
+}
+
 static bool sync_reading_to_firebase(const vital_readings_t *r) {
     if (!getWifi().isConnected() || strlen(s_firebase_host) == 0) {
         return false;
     }
 
-    char url[256];
-    build_firebase_url(url, sizeof(url), "/READINGS/latest.json");
+    uint64_t ts_ms = static_cast<uint64_t>(time(nullptr) * 1000ULL);
 
     cJSON *root = cJSON_CreateObject();
     cJSON_AddNumberToObject(root, "heart_rate", r->heart_rate);
@@ -70,37 +94,40 @@ static bool sync_reading_to_firebase(const vital_readings_t *r) {
     cJSON_AddNumberToObject(root, "bmiSonar", r->bmi_sonar);
     cJSON_AddNumberToObject(root, "systolic", r->systolic);
     cJSON_AddNumberToObject(root, "diastolic", r->diastolic);
-    cJSON_AddNumberToObject(root, "timestamp", static_cast<double>(time(nullptr) * 1000.0));
+    cJSON_AddNumberToObject(root, "timestamp", static_cast<double>(ts_ms));
+    if (r->rfid[0] != '\0') {
+        cJSON_AddStringToObject(root, "rfid", r->rfid);
+    }
 
     char *json_str = cJSON_PrintUnformatted(root);
     cJSON_Delete(root);
 
     if (!json_str) return false;
 
-    esp_http_client_config_t config = {
-        .url = url,
-        .method = HTTP_METHOD_PUT,
-        .timeout_ms = 12000,
-        .event_handler = http_event_handler,
-        .crt_bundle_attach = esp_crt_bundle_attach,
-    };
+    // 1. Sync to global latest
+    bool ok_latest = put_json_to_firebase("/READINGS/latest.json", json_str);
 
-    esp_http_client_handle_t client = esp_http_client_init(&config);
-    esp_http_client_set_header(client, "Content-Type", "application/json");
-    esp_http_client_set_post_field(client, json_str, strlen(json_str));
+    // 2. Sync to global history log
+    char global_hist_path[128];
+    snprintf(global_hist_path, sizeof(global_hist_path), "/READINGS/history/%llu.json", (unsigned long long)ts_ms);
+    put_json_to_firebase(global_hist_path, json_str);
 
-    esp_err_t err = esp_http_client_perform(client);
-    int status_code = esp_http_client_get_status_code(client);
-    esp_http_client_cleanup(client);
-    free(json_str);
+    // 3. Sync to patient-specific latest and history if RFID is present
+    if (r->rfid[0] != '\0') {
+        char user_latest_path[128];
+        snprintf(user_latest_path, sizeof(user_latest_path), "/READINGS/%s/latest.json", r->rfid);
+        put_json_to_firebase(user_latest_path, json_str);
 
-    if (err == ESP_OK && (status_code >= 200 && status_code < 300)) {
-        ESP_LOGI(TAG, "Successfully synced reading to Firebase");
-        return true;
+        char user_hist_path[128];
+        snprintf(user_hist_path, sizeof(user_hist_path), "/READINGS/%s/history/%llu.json", r->rfid, (unsigned long long)ts_ms);
+        put_json_to_firebase(user_hist_path, json_str);
+        ESP_LOGI(TAG, "Synced reading to patient /READINGS/%s and global /READINGS", r->rfid);
     } else {
-        ESP_LOGW(TAG, "Firebase sync failed, status: %d, err: %s", status_code, esp_err_to_name(err));
-        return false;
+        ESP_LOGI(TAG, "Synced anonymous reading to global /READINGS");
     }
+
+    free(json_str);
+    return ok_latest;
 }
 
 static bool fetch_user_from_firebase(const char *rfid, user_profile_t *out_user) {

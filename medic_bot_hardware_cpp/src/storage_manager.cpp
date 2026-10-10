@@ -204,8 +204,9 @@ bool StorageManager::saveReading(const vital_readings_t &r) {
         return false;
     }
 
-    // Default to latest RFID if none attached directly to reading struct
-    sqlite3_bind_text(stmt, 1, "PATIENT_RECORD", -1, SQLITE_STATIC);
+    // Use attached RFID or fallback to PATIENT_RECORD
+    const char *rfid_to_store = (r.rfid[0] != '\0') ? r.rfid : "PATIENT_RECORD";
+    sqlite3_bind_text(stmt, 1, rfid_to_store, -1, SQLITE_STATIC);
     sqlite3_bind_double(stmt, 2, r.heart_rate);
     sqlite3_bind_double(stmt, 3, r.spo2);
     sqlite3_bind_double(stmt, 4, r.temperature);

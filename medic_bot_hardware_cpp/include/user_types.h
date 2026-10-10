@@ -25,6 +25,7 @@ typedef struct {
 } user_profile_t;
 
 typedef struct {
+    char rfid[32];
     float heart_rate;
     float spo2;
     float temperature;

@@ -711,6 +711,7 @@ void KioskOrchestrator::processEvent(const sys_event_t &evt) {
             strncpy(m_latestVitals.aha_category,
                     get_aha_bp_category(m_latestVitals.systolic, m_latestVitals.diastolic),
                     sizeof(m_latestVitals.aha_category) - 1);
+            strncpy(m_latestVitals.rfid, m_currentUser.rfid_uid, sizeof(m_latestVitals.rfid) - 1);
 
             // 1. Save to local SQLite database
             getStorage().saveReading(m_latestVitals);
