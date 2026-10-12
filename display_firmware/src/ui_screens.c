@@ -7,8 +7,17 @@
 static const char *TAG = "UI_SCREENS";
 
 // Screen Objects
-static lv_obj_t *s_screens[10] = {0};
+static lv_obj_t *s_screens[UI_SCREEN_MAX] = {0};
 static ui_screen_id_t s_current_screen = UI_SCREEN_BOOT;
+
+// Measurement Screen Widgets
+static lv_obj_t *s_measuring_patient_lbl = NULL;
+static lv_obj_t *s_measuring_step_pills[5] = {0};
+static lv_obj_t *s_measuring_step_lbls[5] = {0};
+static lv_obj_t *s_measuring_step_title_lbl = NULL;
+static lv_obj_t *s_measuring_prompt_lbl = NULL;
+static lv_obj_t *s_measuring_spinner = NULL;
+static lv_obj_t *s_measuring_bar = NULL;
 
 // Boot Screen Widgets
 static lv_obj_t *s_boot_bar = NULL;
@@ -83,6 +92,7 @@ static void create_login_screens(void);
 static void create_signup_screens(void);
 static void create_dashboard_screen(void);
 static void create_profile_screen(void);
+static void create_measuring_screen(void);
 
 // Navigation Event Handlers
 static void on_btn_idle_existing(lv_event_t *e) {
@@ -99,6 +109,12 @@ static void on_btn_idle_new(lv_event_t *e) {
 static void on_btn_cancel_back(lv_event_t *e) {
     display_comm_send_cmd("BACK");
     ui_show_screen(UI_SCREEN_IDLE);
+}
+
+static void on_btn_cancel_measurement(lv_event_t *e) {
+    display_comm_send_cmd("BACK");
+    ui_show_screen(UI_SCREEN_DASHBOARD);
+    ui_show_toast("Measurement cancelled. Homing carriage...");
 }
 
 void ui_login_card_reset(void) {
@@ -330,7 +346,8 @@ static void on_btn_bp_dia_adjust(lv_event_t *e) {
 
 static void on_btn_take_measurement(lv_event_t *e) {
     display_comm_send_cmd("READ_OXIMETER");
-    ui_show_toast("Starting Vitals Measurement... Step on scale.");
+    ui_measuring_show(g_active_patient.name, g_active_patient.medical_id);
+    ui_show_screen(UI_SCREEN_MEASURING);
 }
 
 static void on_btn_save_readings(lv_event_t *e) {
@@ -360,7 +377,7 @@ void ui_show_toast(const char *message) {
 }
 
 void ui_show_screen(ui_screen_id_t screen_id) {
-    if (screen_id >= 10 || !s_screens[screen_id]) return;
+    if (screen_id >= UI_SCREEN_MAX || !s_screens[screen_id]) return;
     lvgl_port_lock(0);
     s_current_screen = screen_id;
     lv_screen_load(s_screens[screen_id]);
@@ -1199,6 +1216,229 @@ static void create_profile_screen(void) {
     lv_obj_center(lbl_b);
 }
 
+static void create_measuring_screen(void) {
+    s_screens[UI_SCREEN_MEASURING] = lv_obj_create(NULL);
+    lv_obj_set_style_bg_color(s_screens[UI_SCREEN_MEASURING], lv_color_hex(0xf8fafc), 0);
+
+    // 1. Top Header Bar (Height 52px, across 760px)
+    lv_obj_t *hdr = lv_obj_create(s_screens[UI_SCREEN_MEASURING]);
+    lv_obj_set_size(hdr, 760, 52);
+    lv_obj_align(hdr, LV_ALIGN_TOP_MID, 0, 10);
+    lv_obj_set_style_bg_color(hdr, lv_color_hex(0xffffff), 0);
+    lv_obj_set_style_border_color(hdr, lv_color_hex(0xe2e8f0), 0);
+    lv_obj_set_style_border_width(hdr, 1, 0);
+    lv_obj_set_style_radius(hdr, 12, 0);
+    lv_obj_clear_flag(hdr, LV_OBJ_FLAG_SCROLLABLE);
+
+    lv_obj_t *title = lv_label_create(hdr);
+    lv_label_set_text(title, LV_SYMBOL_SETTINGS " VITALS ACQUISITION");
+    lv_obj_set_style_text_color(title, lv_color_hex(0x0284c7), 0);
+    lv_obj_set_style_text_font(title, &lv_font_montserrat_16, 0);
+    lv_obj_align(title, LV_ALIGN_LEFT_MID, 10, 0);
+
+    s_measuring_patient_lbl = lv_label_create(hdr);
+    lv_label_set_text(s_measuring_patient_lbl, "Patient: Active Session");
+    lv_obj_set_style_text_color(s_measuring_patient_lbl, lv_color_hex(0x475569), 0);
+    lv_obj_set_style_text_font(s_measuring_patient_lbl, &lv_font_montserrat_14, 0);
+    lv_obj_align(s_measuring_patient_lbl, LV_ALIGN_RIGHT_MID, -10, 0);
+
+    // 2. Step Indicator Pills (5 Steps across 760px)
+    const char *step_names[5] = {
+        "1. Weight",
+        "2. Height",
+        "3. Scanner",
+        "4. Temp",
+        "5. Oximeter"
+    };
+
+    int pill_w = 142;
+    int pill_h = 40;
+    int start_x = 20;
+    int gap = 12;
+
+    for (int i = 0; i < 5; i++) {
+        s_measuring_step_pills[i] = lv_obj_create(s_screens[UI_SCREEN_MEASURING]);
+        lv_obj_set_size(s_measuring_step_pills[i], pill_w, pill_h);
+        lv_obj_set_pos(s_measuring_step_pills[i], start_x + i * (pill_w + gap), 72);
+        lv_obj_set_style_radius(s_measuring_step_pills[i], 10, 0);
+        lv_obj_set_style_border_width(s_measuring_step_pills[i], 1, 0);
+        lv_obj_set_style_border_color(s_measuring_step_pills[i], (i == 0) ? lv_color_hex(0x0284c7) : lv_color_hex(0xe2e8f0), 0);
+        lv_obj_set_style_bg_color(s_measuring_step_pills[i], (i == 0) ? lv_color_hex(0x0284c7) : lv_color_hex(0xffffff), 0);
+        lv_obj_clear_flag(s_measuring_step_pills[i], LV_OBJ_FLAG_SCROLLABLE);
+
+        s_measuring_step_lbls[i] = lv_label_create(s_measuring_step_pills[i]);
+        lv_label_set_text(s_measuring_step_lbls[i], step_names[i]);
+        lv_obj_set_style_text_color(s_measuring_step_lbls[i], (i == 0) ? lv_color_hex(0xffffff) : lv_color_hex(0x64748b), 0);
+        lv_obj_set_style_text_font(s_measuring_step_lbls[i], &lv_font_montserrat_14, 0);
+        lv_obj_center(s_measuring_step_lbls[i]);
+    }
+
+    // 3. Overall Progress Bar
+    s_measuring_bar = lv_bar_create(s_screens[UI_SCREEN_MEASURING]);
+    lv_obj_set_size(s_measuring_bar, 760, 6);
+    lv_obj_set_pos(s_measuring_bar, 20, 122);
+    lv_obj_set_style_bg_color(s_measuring_bar, lv_color_hex(0xe2e8f0), LV_PART_MAIN);
+    lv_obj_set_style_bg_color(s_measuring_bar, lv_color_hex(0x0284c7), LV_PART_INDICATOR);
+    lv_bar_set_range(s_measuring_bar, 0, 100);
+    lv_bar_set_value(s_measuring_bar, 10, LV_ANIM_OFF);
+
+    // 4. Center Primary Instruction Card (Width 760, Height 260, Y=138)
+    lv_obj_t *card = lv_obj_create(s_screens[UI_SCREEN_MEASURING]);
+    lv_obj_set_size(card, 760, 260);
+    lv_obj_set_pos(card, 20, 138);
+    lv_obj_set_style_bg_color(card, lv_color_hex(0xffffff), 0);
+    lv_obj_set_style_border_color(card, lv_color_hex(0xbae6fd), 0);
+    lv_obj_set_style_border_width(card, 2, 0);
+    lv_obj_set_style_radius(card, 16, 0);
+    lv_obj_clear_flag(card, LV_OBJ_FLAG_SCROLLABLE);
+
+    s_measuring_spinner = lv_spinner_create(card);
+    lv_obj_set_size(s_measuring_spinner, 80, 80);
+    lv_obj_align(s_measuring_spinner, LV_ALIGN_LEFT_MID, 25, 0);
+    lv_obj_set_style_arc_color(s_measuring_spinner, lv_color_hex(0xe0f2fe), LV_PART_MAIN);
+    lv_obj_set_style_arc_color(s_measuring_spinner, lv_color_hex(0x0284c7), LV_PART_INDICATOR);
+    lv_obj_set_style_arc_width(s_measuring_spinner, 8, LV_PART_MAIN);
+    lv_obj_set_style_arc_width(s_measuring_spinner, 8, LV_PART_INDICATOR);
+
+    lv_obj_t *text_cont = lv_obj_create(card);
+    lv_obj_set_size(text_cont, 580, 210);
+    lv_obj_align(text_cont, LV_ALIGN_LEFT_MID, 135, 0);
+    lv_obj_set_style_bg_opa(text_cont, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(text_cont, 0, 0);
+    lv_obj_clear_flag(text_cont, LV_OBJ_FLAG_SCROLLABLE);
+
+    s_measuring_step_title_lbl = lv_label_create(text_cont);
+    lv_label_set_text(s_measuring_step_title_lbl, "Step 1 of 5: Weight Measurement");
+    lv_obj_set_style_text_color(s_measuring_step_title_lbl, lv_color_hex(0x0f172a), 0);
+    lv_obj_set_style_text_font(s_measuring_step_title_lbl, &lv_font_montserrat_20, 0);
+    lv_obj_align(s_measuring_step_title_lbl, LV_ALIGN_TOP_LEFT, 0, 5);
+
+    s_measuring_prompt_lbl = lv_label_create(text_cont);
+    lv_label_set_text(s_measuring_prompt_lbl, "Step on scale platform and stand completely still while stabilizing...");
+    lv_label_set_long_mode(s_measuring_prompt_lbl, LV_LABEL_LONG_WRAP);
+    lv_obj_set_width(s_measuring_prompt_lbl, 560);
+    lv_obj_set_style_text_color(s_measuring_prompt_lbl, lv_color_hex(0x334155), 0);
+    lv_obj_set_style_text_font(s_measuring_prompt_lbl, &lv_font_montserrat_16, 0);
+    lv_obj_align(s_measuring_prompt_lbl, LV_ALIGN_TOP_LEFT, 0, 48);
+
+    lv_obj_t *tip_lbl = lv_label_create(text_cont);
+    lv_label_set_text(tip_lbl, "💡 Keep your posture upright. The kiosk will guide you through each step automatically.");
+    lv_label_set_long_mode(tip_lbl, LV_LABEL_LONG_WRAP);
+    lv_obj_set_width(tip_lbl, 560);
+    lv_obj_set_style_text_color(tip_lbl, lv_color_hex(0x64748b), 0);
+    lv_obj_set_style_text_font(tip_lbl, &lv_font_montserrat_14, 0);
+    lv_obj_align(tip_lbl, LV_ALIGN_BOTTOM_LEFT, 0, -5);
+
+    // 5. Bottom Navigation / Cancel Bar (Y=410, Height 50)
+    lv_obj_t *btn_cancel = lv_button_create(s_screens[UI_SCREEN_MEASURING]);
+    lv_obj_set_size(btn_cancel, 240, 48);
+    lv_obj_align(btn_cancel, LV_ALIGN_BOTTOM_MID, 0, -12);
+    lv_obj_set_style_bg_color(btn_cancel, lv_color_hex(0xffffff), 0);
+    lv_obj_set_style_border_color(btn_cancel, lv_color_hex(0xef4444), 0);
+    lv_obj_set_style_border_width(btn_cancel, 2, 0);
+    lv_obj_set_style_radius(btn_cancel, 12, 0);
+    lv_obj_add_event_cb(btn_cancel, on_btn_cancel_measurement, LV_EVENT_CLICKED, NULL);
+
+    lv_obj_t *btn_lbl = lv_label_create(btn_cancel);
+    lv_label_set_text(btn_lbl, LV_SYMBOL_CLOSE " Cancel Measurement");
+    lv_obj_set_style_text_color(btn_lbl, lv_color_hex(0xef4444), 0);
+    lv_obj_set_style_text_font(btn_lbl, &lv_font_montserrat_14, 0);
+    lv_obj_center(btn_lbl);
+}
+
+void ui_measuring_show(const char *name, const char *medical_id) {
+    lvgl_port_lock(0);
+    if (s_measuring_patient_lbl) {
+        char buf[64];
+        snprintf(buf, sizeof(buf), "Patient: %s | ID: %s", (name && name[0]) ? name : "Active Session", (medical_id && medical_id[0]) ? medical_id : "--");
+        lv_label_set_text(s_measuring_patient_lbl, buf);
+    }
+    for (int i = 0; i < 5; i++) {
+        if (s_measuring_step_pills[i]) {
+            lv_obj_set_style_bg_color(s_measuring_step_pills[i], (i == 0) ? lv_color_hex(0x0284c7) : lv_color_hex(0xffffff), 0);
+            lv_obj_set_style_border_color(s_measuring_step_pills[i], (i == 0) ? lv_color_hex(0x0284c7) : lv_color_hex(0xe2e8f0), 0);
+        }
+        if (s_measuring_step_lbls[i]) {
+            lv_obj_set_style_text_color(s_measuring_step_lbls[i], (i == 0) ? lv_color_hex(0xffffff) : lv_color_hex(0x64748b), 0);
+        }
+    }
+    if (s_measuring_step_title_lbl) {
+        lv_label_set_text(s_measuring_step_title_lbl, "Step 1 of 5: Weight Measurement");
+    }
+    if (s_measuring_prompt_lbl) {
+        lv_label_set_text(s_measuring_prompt_lbl, "Step on scale platform and stand completely still while stabilizing...");
+    }
+    if (s_measuring_bar) {
+        lv_bar_set_value(s_measuring_bar, 10, LV_ANIM_OFF);
+    }
+    lvgl_port_unlock();
+}
+
+void ui_measuring_update_prompt(const char *prompt_msg) {
+    if (!prompt_msg) return;
+    lvgl_port_lock(0);
+
+    int current_step = 1;
+    const char *step_title = "Step 1 of 5: Weight Measurement";
+    int progress_pct = 15;
+
+    if (strstr(prompt_msg, "Step 2") || strstr(prompt_msg, "height") || strstr(prompt_msg, "Height")) {
+        current_step = 2;
+        step_title = "Step 2 of 5: Height Sensing";
+        progress_pct = 35;
+    } else if (strstr(prompt_msg, "Step 3") || strstr(prompt_msg, "scanner") || strstr(prompt_msg, "carriage") || strstr(prompt_msg, "level") || strstr(prompt_msg, "Align") || strstr(prompt_msg, "Positioning")) {
+        current_step = 3;
+        step_title = "Step 3 of 5: Scanner Alignment";
+        progress_pct = 55;
+    } else if (strstr(prompt_msg, "Step 4") || strstr(prompt_msg, "temp") || strstr(prompt_msg, "Temp") || strstr(prompt_msg, "temperature")) {
+        current_step = 4;
+        step_title = "Step 4 of 5: Forehead Temperature";
+        progress_pct = 75;
+    } else if (strstr(prompt_msg, "Step 5") || strstr(prompt_msg, "oximeter") || strstr(prompt_msg, "finger") || strstr(prompt_msg, "Homing") || strstr(prompt_msg, "homing")) {
+        current_step = 5;
+        step_title = "Step 5 of 5: Pulse & Blood Oxygen (SpO2)";
+        progress_pct = 90;
+    } else if (strstr(prompt_msg, "complete") || strstr(prompt_msg, "Complete")) {
+        current_step = 6;
+        step_title = "Vitals Measurement Complete!";
+        progress_pct = 100;
+    }
+
+    // Update Step Pills
+    for (int i = 0; i < 5; i++) {
+        if (!s_measuring_step_pills[i]) continue;
+        int step_num = i + 1;
+        if (step_num < current_step) {
+            // Completed: Emerald Green
+            lv_obj_set_style_bg_color(s_measuring_step_pills[i], lv_color_hex(0x10b981), 0);
+            lv_obj_set_style_border_color(s_measuring_step_pills[i], lv_color_hex(0x10b981), 0);
+            if (s_measuring_step_lbls[i]) lv_obj_set_style_text_color(s_measuring_step_lbls[i], lv_color_hex(0xffffff), 0);
+        } else if (step_num == current_step) {
+            // Active: Primary Blue
+            lv_obj_set_style_bg_color(s_measuring_step_pills[i], lv_color_hex(0x0284c7), 0);
+            lv_obj_set_style_border_color(s_measuring_step_pills[i], lv_color_hex(0x0284c7), 0);
+            if (s_measuring_step_lbls[i]) lv_obj_set_style_text_color(s_measuring_step_lbls[i], lv_color_hex(0xffffff), 0);
+        } else {
+            // Inactive: White / Light Gray
+            lv_obj_set_style_bg_color(s_measuring_step_pills[i], lv_color_hex(0xffffff), 0);
+            lv_obj_set_style_border_color(s_measuring_step_pills[i], lv_color_hex(0xe2e8f0), 0);
+            if (s_measuring_step_lbls[i]) lv_obj_set_style_text_color(s_measuring_step_lbls[i], lv_color_hex(0x64748b), 0);
+        }
+    }
+
+    if (s_measuring_step_title_lbl) {
+        lv_label_set_text(s_measuring_step_title_lbl, step_title);
+    }
+    if (s_measuring_prompt_lbl) {
+        lv_label_set_text(s_measuring_prompt_lbl, prompt_msg);
+    }
+    if (s_measuring_bar) {
+        lv_bar_set_value(s_measuring_bar, progress_pct, LV_ANIM_ON);
+    }
+
+    lvgl_port_unlock();
+}
+
 void ui_init(void) {
     ESP_LOGI(TAG, "Initializing LVGL Screens & Themes (White Medical Theme)");
     lvgl_port_lock(0);
@@ -1209,6 +1449,7 @@ void ui_init(void) {
     create_signup_screens();
     create_dashboard_screen();
     create_profile_screen();
+    create_measuring_screen();
 
     // Floating Global Toast Notification Box
     s_toast_obj = lv_obj_create(lv_layer_top());

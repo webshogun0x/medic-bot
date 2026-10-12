@@ -116,11 +116,21 @@ static void parse_json_line(const char *json_str) {
         if (cJSON_IsNumber(bmi)) g_active_patient.bmi = (float)bmi->valuedouble;
 
         ui_dashboard_update_vitals(&g_active_patient);
+
+        if (ui_get_current_screen() == UI_SCREEN_MEASURING) {
+            ui_show_screen(UI_SCREEN_DASHBOARD);
+            ui_show_toast("✅ Measurement Complete! Review vitals & Save to Cloud");
+        }
+
         display_comm_send_cmd("{\"type\":\"ACK\",\"received\":\"SENSOR_DATA\"}");
     } else if (strcmp(type, "PROMPT") == 0) {
         cJSON *msg = cJSON_GetObjectItem(root, "message");
         if (cJSON_IsString(msg)) {
-            ui_show_toast(msg->valuestring);
+            if (ui_get_current_screen() == UI_SCREEN_MEASURING) {
+                ui_measuring_update_prompt(msg->valuestring);
+            } else {
+                ui_show_toast(msg->valuestring);
+            }
         }
         display_comm_send_cmd("{\"type\":\"ACK\",\"received\":\"PROMPT\"}");
     } else if (strcmp(type, "CARD_DETECTED") == 0 || strcmp(type, "CARD_SCANNED") == 0) {

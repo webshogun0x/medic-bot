@@ -19,7 +19,9 @@ typedef enum {
     UI_SCREEN_SIGNUP_FP1,
     UI_SCREEN_SIGNUP_FP2,
     UI_SCREEN_DASHBOARD,
-    UI_SCREEN_PROFILE
+    UI_SCREEN_PROFILE,
+    UI_SCREEN_MEASURING,
+    UI_SCREEN_MAX
 } ui_screen_id_t;
 
 /**
@@ -87,6 +89,16 @@ void ui_login_fp_show_status(const char *name, const char *medical_id, bool regi
  * @brief Update enrollment/signup fingerprint status message, color indicator, and patient info header.
  */
 void ui_signup_fp_update_status(int step, const char *status_type, const char *message, const char *name, const char *medical_id);
+
+/**
+ * @brief Initialize and show the dedicated Measurement Progress screen.
+ */
+void ui_measuring_show(const char *name, const char *medical_id);
+
+/**
+ * @brief Update the Measurement Progress screen with live prompt and active step indicator.
+ */
+void ui_measuring_update_prompt(const char *prompt_msg);
 
 #ifdef __cplusplus
 }

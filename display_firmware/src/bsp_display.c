@@ -112,6 +112,7 @@ static esp_err_t app_lvgl_init(esp_lcd_panel_handle_t lp,
         .flags = {
             .buff_dma = false,
             .buff_spiram = true,
+            .sw_rotate = true,
         }
     };
 
@@ -123,13 +124,18 @@ static esp_err_t app_lvgl_init(esp_lcd_panel_handle_t lp,
     };
     *lv_disp = lvgl_port_add_disp_rgb(&disp_cfg, &rgb_cfg);
 
+    // Apply 180 degree rotation to display
+    lvgl_port_lock(0);
+    lv_display_set_rotation(*lv_disp, LV_DISPLAY_ROTATION_180);
+    lvgl_port_unlock();
+
     const lvgl_port_touch_cfg_t touch_cfg = {
         .disp = *lv_disp,
         .handle = tp,
     };
     *lv_touch_indev = lvgl_port_add_touch(&touch_cfg);
 
-    ESP_LOGI(TAG, "LVGL Display and GT911 Touch Registered Successfully");
+    ESP_LOGI(TAG, "LVGL Display (180deg Rotated) and GT911 Touch Registered Successfully");
     return ESP_OK;
 }
 

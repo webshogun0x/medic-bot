@@ -728,7 +728,15 @@ void KioskOrchestrator::processEvent(const sys_event_t &evt) {
 
         case EVT_CMD_BACK:
             ESP_LOGI(TAG, "User clicked BACK - cancelling active operation");
-            resetToStandby();
+            if (m_state == OrchestratorState::MEASURING_VITALS && m_currentUser.is_logged_in) {
+                m_measStep = MeasurementStep::IDLE;
+                max30102_cancel_measurement();
+                getEspNow().returnCarriageHome();
+                m_state = OrchestratorState::DASHBOARD_ACTIVE;
+                getDisplay().sendPrompt("Measurement cancelled. Returned to Dashboard.");
+            } else {
+                resetToStandby();
+            }
             break;
 
         case EVT_CMD_LOGOUT:
