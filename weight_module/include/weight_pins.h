@@ -19,7 +19,7 @@
  * Calibration & Threshold Parameters
  * ========================================================================= */
 // Calibration factor (counts per kg) - adjust based on known calibration weight
-#define DEFAULT_CALIBRATION_FACTOR (-7050.0f)
+#define DEFAULT_CALIBRATION_FACTOR (30245.0f)
 
 // Weight stability parameters
 #define STABILITY_DELTA_KG      0.25f   // Standard deviation max for stable weight
