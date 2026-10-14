@@ -1,16 +1,18 @@
 /*
- * MediBot Health Kiosk - Weight Scale Subsystem Firmware (Quiet Sampling Node)
+ * MediBot Health Kiosk - Weight Scale Subsystem Firmware
  * Target Microcontroller: ESP-12F / ESP-12E (ESP8266)
  * Hardware:
  *   - 4x Strain Gauge Load Cells in Wheatstone Bridge Configuration
  *   - HX711 24-bit ADC Amplifier (DOUT=GPIO4/D2, SCK=GPIO5/D1)
  *   - Master-Worker 2.4 GHz ESP-NOW (Slave node: NODE_WEIGHT_SCALE)
  *
- * Features:
- *   1. Dual-Trigger: Orchestrated (Kiosk CMD_GET_WEIGHT) + Autonomous (Step-On >= 15kg).
- *   2. Quiet Sampling Phase: Wi-Fi radio & ESP-NOW powered OFF during ADC sampling (pure DC, ~15mA, zero RF noise).
- *   3. Burst Transmission: Radio wakes up only after stable lock, bursts 3x RESP_WEIGHT packets, and returns to sleep.
- *   4. Interactive Calibration: 'c <kg>' on-the-fly calibration + fine-tuning via Serial.
+ * Sequential Orchestration & Quiet Human Sensing Engine:
+ *   1. Standby: Node listens in low-power RX for Main Controller's CMD_GET_WEIGHT.
+ *   2. Command Received: Wi-Fi radio & ESP-NOW are COMPLETELY SHUT DOWN (Zero RF, pure DC ~15mA).
+ *   3. Human Verification: Actively waits for human weight (>= 15kg) to be on the platform.
+ *      Never takes or transmits empty platform readings (0 kg).
+ *   4. Quiet Stabilization: Samples load in complete radio silence until weight locks within ±0.25kg.
+ *   5. Wake & Transmit: Wakes up radio, broadcasts RESP_WEIGHT to Main Controller, returns to RX standby.
  *
  * Authors: Idowu Oluwatimileyin (The_Shogunate) & Engineering Team
  */
@@ -28,7 +30,7 @@ extern "C" {
 
 static const char *TAG = "WEIGHT_NODE";
 
-// Hardware Objects
+// Hardware Objects & State
 static HX711 scale;
 static float g_calibration_factor = DEFAULT_CALIBRATION_FACTOR;
 static uint8_t g_broadcast_mac[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
@@ -49,7 +51,7 @@ static void power_on_radio() {
 
     Serial.printf("[%s] [POWER] Waking up Wi-Fi radio & ESP-NOW...\n", TAG);
     WiFi.forceSleepWake();
-    delay(20);
+    delay(25);
 
     WiFi.mode(WIFI_STA);
     wifi_set_channel(g_active_channel);
@@ -59,7 +61,7 @@ static void power_on_radio() {
         esp_now_register_recv_cb(on_espnow_data_recv);
         esp_now_add_peer(g_broadcast_mac, ESP_NOW_ROLE_COMBO, g_active_channel, NULL, 0);
         g_radio_is_on = true;
-        Serial.printf("[%s] [POWER] Wi-Fi Active on Channel %d\n", TAG, g_active_channel);
+        Serial.printf("[%s] [POWER] Wi-Fi Active on Channel %d (Listening for Kiosk)\n", TAG, g_active_channel);
     } else {
         Serial.printf("[%s] [POWER] Error re-initializing ESP-NOW\n", TAG);
     }
@@ -68,14 +70,14 @@ static void power_on_radio() {
 static void power_off_radio() {
     if (!g_radio_is_on) return;
 
-    Serial.printf("[%s] [POWER] Entering Quiet Sampling Mode (Wi-Fi radio powering OFF)...\n", TAG);
+    Serial.printf("[%s] [POWER] Shutting DOWN Wi-Fi radio & ESP-NOW...\n", TAG);
     esp_now_deinit();
     WiFi.disconnect(true);
     WiFi.mode(WIFI_OFF);
     WiFi.forceSleepBegin();
-    delay(50);
+    delay(150); // Settling delay: caps discharge RF ripple, power rail is pure flat DC
     g_radio_is_on = false;
-    Serial.printf("[%s] [POWER] ✅ Radio is OFF. Pure DC power & zero RF noise active.\n", TAG);
+    Serial.printf("[%s] [POWER] ✅ Radio 100%% OFF. Zero RF emissions, pure DC active.\n", TAG);
 }
 
 /* =========================================================================
@@ -97,7 +99,7 @@ static void send_espnow_response(uint8_t opcode, float value, uint8_t status) {
     pkt.status = status;
     pkt.data.weight = value;
 
-    // Send 3 burst transmissions to guarantee delivery
+    // Send 3 burst transmissions to guarantee delivery to Main Controller
     for (int i = 0; i < 3; i++) {
         int res = esp_now_send(g_broadcast_mac, (uint8_t *)&pkt, sizeof(pkt));
         if (res == 0) {
@@ -162,21 +164,53 @@ static void auto_channel_hunt() {
 }
 
 /* =========================================================================
- * Precision Quiet Weight Sampling
+ * Precision Quiet Human Weight Measurement
+ * 
+ * Rules:
+ *  1. Wi-Fi must be 100% OFF before sampling.
+ *  2. Must wait until human load (>= min_threshold_kg) is actually detected.
+ *     Never locks or sends empty platform / zero readings.
+ *  3. Takes samples in complete radio silence until reading stabilizes.
  * ========================================================================= */
-static float measure_quiet_stable_weight() {
-    // 1. ENSURE RADIO IS 100% OFF FOR SENSING
+static float measure_human_quiet_weight(float min_threshold_kg, uint32_t timeout_ms) {
+    // 1. Ensure radio is 100% OFF before touching the ADC
     power_off_radio();
 
     if (!scale.wait_ready_timeout(1000)) {
-        Serial.printf("[%s] Error: HX711 not ready (timeout after 1000ms)\n", TAG);
+        Serial.printf("[%s] Error: HX711 not ready\n", TAG);
         return 0.0f;
     }
 
-    Serial.printf("[%s] >>> QUIET SAMPLING STARTED: Platform stabilizing in radio silence... <<<\n", TAG);
-    digitalWrite(PIN_STATUS_LED, LOW); // LED ON
+    Serial.printf("[%s] >>> WAITING FOR PATIENT: Step onto platform (Min: %.1f kg)... <<<\n",
+                  TAG, min_threshold_kg);
 
-    const int MAX_ATTEMPTS = 18;
+    // 2. Wait actively for human weight to appear on the platform
+    uint32_t wait_start = millis();
+    bool human_present = false;
+
+    while (millis() - wait_start < timeout_ms) {
+        if (scale.wait_ready_timeout(120)) {
+            float instant = scale.get_units(1);
+            if (instant >= min_threshold_kg) {
+                human_present = true;
+                Serial.printf("[%s] >>> Human detected on platform (%.1f kg)! Stabilizing... <<<\n",
+                              TAG, instant);
+                break;
+            }
+        }
+        delay(80);
+    }
+
+    if (!human_present) {
+        Serial.printf("[%s] Timeout: No patient detected on scale within %u ms.\n", TAG, timeout_ms);
+        return 0.0f;
+    }
+
+    // 3. Human is confirmed on platform -> Perform precision stabilization in radio silence
+    digitalWrite(PIN_STATUS_LED, LOW); // LED ON
+    Serial.printf("[%s] >>> QUIET SAMPLING: Locking stable weight in radio silence... <<<\n", TAG);
+
+    const int MAX_ATTEMPTS = 16;
     const int SAMPLES_PER_READ = 3;
     float prev_weight = 0.0f;
     float stable_weight = 0.0f;
@@ -190,11 +224,12 @@ static float measure_quiet_stable_weight() {
 
         if (attempt > 0) {
             float delta = fabs(current - prev_weight);
-            if (delta <= STABILITY_DELTA_KG && current >= 1.0f) {
+            if (delta <= STABILITY_DELTA_KG && current >= min_threshold_kg) {
                 stable_streak++;
                 if (stable_streak >= 2) {
                     stable_weight = (current + prev_weight) / 2.0f;
-                    Serial.printf("[%s] ✅ Stable Weight Locked: %.2f kg (Streak=%d)\n", TAG, stable_weight, stable_streak);
+                    Serial.printf("[%s] ✅ Stable Human Weight Locked: %.2f kg (Streak=%d)\n",
+                                  TAG, stable_weight, stable_streak);
                     break;
                 }
             } else {
@@ -207,7 +242,7 @@ static float measure_quiet_stable_weight() {
     }
 
     // Fallback if streak didn't lock: 5-sample average
-    if (stable_weight == 0.0f && prev_weight >= 1.0f) {
+    if (stable_weight == 0.0f && prev_weight >= min_threshold_kg) {
         stable_weight = scale.get_units(5);
         if (stable_weight < 0.0f) stable_weight = 0.0f;
         Serial.printf("[%s] Fallback Average: %.2f kg\n", TAG, stable_weight);
@@ -218,7 +253,7 @@ static float measure_quiet_stable_weight() {
 }
 
 /* =========================================================================
- * Arduino Setup & Loop
+ * Arduino Setup & Main Loop
  * ========================================================================= */
 void setup() {
     Serial.begin(115200);
@@ -226,7 +261,7 @@ void setup() {
 
     Serial.println("\n========================================================");
     Serial.println("   MediBot Weight Scale Subsystem - Production Node");
-    Serial.println("   ESP-12F Precision HX711 (Quiet Sampling Engine)");
+    Serial.println("   ESP-12F Precision HX711 (Orchestrated Quiet Sampling)");
     Serial.println("========================================================");
 
     pinMode(PIN_STATUS_LED, OUTPUT);
@@ -256,74 +291,53 @@ void setup() {
     power_on_radio();
     auto_channel_hunt();
 
-    Serial.println("[SETUP] Scale Ready! Listening for Kiosk command OR Step-on...");
+    // 3. Standby: Radio stays in RX listening for Kiosk 'Take Measurement' command
+    Serial.println("[SETUP] Scale Ready! Listening in RX for Kiosk 'Take Measurement' command...");
     Serial.println("Commands: [m] Trigger measurement | [t] Tare | [r] Read raw ADC | [c <kg>] Calibrate | [+][-] Fine-tune factor");
 }
 
 void loop() {
     // -------------------------------------------------------------
-    // Path 1: Kiosk Wireless Trigger (CMD_GET_WEIGHT)
+    // Path 1: Kiosk Orchestrated Trigger (CMD_GET_WEIGHT)
     // -------------------------------------------------------------
     if (g_orch_trigger) {
         g_orch_trigger = false;
 
-        // Perform measurement in 100% radio silence
-        float weight = measure_quiet_stable_weight();
+        // 1. Shut off radio completely & wait for human (>= 15kg) to be on scale
+        float final_weight = measure_human_quiet_weight(PATIENT_DETECT_MIN_KG, 12000);
 
-        // Wake up radio and transmit
+        // 2. Turn radio ON only after measurement is ready to send
         power_on_radio();
-        uint8_t status = (weight > 0.0f) ? 0 : 1;
-        send_espnow_response(RESP_WEIGHT, weight, status);
 
-        // Keep radio on for 2 seconds to receive any follow-up ACKs
-        delay(2000);
-        // Then return to quiet monitoring
-        power_off_radio();
-    }
+        uint8_t status = (final_weight >= PATIENT_DETECT_MIN_KG) ? 0 : 1;
+        send_espnow_response(RESP_WEIGHT, final_weight, status);
 
-    // -------------------------------------------------------------
-    // Path 2: Autonomous Step-On Detection (When Radio is Asleep)
-    // -------------------------------------------------------------
-    if (!g_radio_is_on && scale.wait_ready_timeout(100)) {
-        float instant_weight = scale.get_units(1);
-        if (instant_weight >= PATIENT_DETECT_MIN_KG) {
-            Serial.printf("\n[%s] >>> Person detected on platform (%.1f kg)! Starting Quiet Measurement... <<<\n",
-                          TAG, instant_weight);
-
-            float final_weight = measure_quiet_stable_weight();
-
-            if (final_weight >= PATIENT_DETECT_MIN_KG) {
-                // Wake up radio and transmit
-                power_on_radio();
-                send_espnow_response(RESP_WEIGHT, final_weight, 0);
-
-                Serial.printf("[%s] Waiting for patient to step off scale platform...\n", TAG);
-                while (scale.get_units(1) > TARE_THRESHOLD_KG) {
-                    delay(250);
-                }
-                Serial.printf("[%s] Patient stepped off. Returning to Quiet Sleep.\n", TAG);
-                delay(500);
-                power_off_radio();
-            }
+        if (status == 0) {
+            Serial.printf("[%s] ✅ Vitals Step 1 Complete! Weight %.2f kg sent to Main Controller.\n",
+                          TAG, final_weight);
+        } else {
+            Serial.printf("[%s] ⚠️ Notice: Measurement timeout/no patient. Sent status=%d.\n",
+                          TAG, status);
         }
     }
 
     // -------------------------------------------------------------
-    // Path 3: Serial Monitor Diagnostics & Calibration
+    // Path 2: Serial Monitor Diagnostics & Interactive Calibration
     // -------------------------------------------------------------
     if (Serial.available() > 0) {
         char cmd = Serial.read();
         if (cmd == 'm') {
-            Serial.println("\n--- MANUAL QUIET MEASUREMENT ---");
-            float w = measure_quiet_stable_weight();
+            Serial.println("\n--- MANUAL QUIET TEST MEASUREMENT ---");
+            // For manual bench testing: accepts test weights >= 0.5 kg (e.g. 1kg weight)
+            float w = measure_human_quiet_weight(0.5f, 8000);
             power_on_radio();
             send_espnow_response(RESP_WEIGHT, w, (w > 0.0f) ? 0 : 1);
-            power_off_radio();
         } else if (cmd == 't') {
             Serial.println("\n--- MANUAL TARE ---");
             power_off_radio();
             scale.tare(10);
             Serial.printf(">>> Platform Tared. New Offset: %ld\n\n", scale.get_offset());
+            power_on_radio();
         } else if (cmd == 'r') {
             Serial.printf(">>> Raw ADC: %ld | Units: %.2f kg | Factor: %.1f | Radio: %s\n",
                           scale.read(), scale.get_units(1), g_calibration_factor, g_radio_is_on ? "ON" : "OFF");
@@ -337,8 +351,9 @@ void loop() {
                 scale.set_scale(g_calibration_factor);
                 Serial.printf(">>> Calibrated with %.2f kg! Raw: %ld, Offset: %ld -> New Factor: %.2f\n\n",
                               known_kg, raw, offset, g_calibration_factor);
+                power_on_radio();
             } else {
-                Serial.println("Usage: Send 'c <weight_in_kg>' (e.g. 'c 25.0' or 'c 10') with known weight on scale.");
+                Serial.println("Usage: Send 'c <weight_in_kg>' (e.g. 'c 25.0' or 'c 1.0') with known weight on scale.");
             }
         } else if (cmd == '+') {
             g_calibration_factor += 50.0f;
@@ -351,5 +366,5 @@ void loop() {
         }
     }
 
-    delay(100);
+    delay(20);
 }
