@@ -124,8 +124,14 @@ static void on_espnow_data_recv(uint8_t *mac, uint8_t *data, uint8_t len) {
 
     switch (pkt->opcode) {
         case CMD_GET_WEIGHT:
-            Serial.printf("[%s] >>> Kiosk Trigger: CMD_GET_WEIGHT received from Main Controller! <<<\n", TAG);
+            Serial.printf("[%s] >>> Kiosk Trigger: CMD_GET_WEIGHT received! Sending Immediate ACK... <<<\n", TAG);
+            // 1. Send Immediate ACK while Wi-Fi is still alive (takes ~5ms)
+            send_espnow_response(RESP_WEIGHT, 0.0f, STATUS_BUSY_MEASURING);
             g_orch_trigger = true;
+            break;
+
+        case CMD_ACK:
+            Serial.printf("[%s] >>> Main Controller confirmed receipt of weight reading! <<<\n", TAG);
             break;
 
         case CMD_PING:
@@ -363,6 +369,23 @@ void loop() {
             g_calibration_factor -= 50.0f;
             scale.set_scale(g_calibration_factor);
             Serial.printf(">>> Factor decreased to: %.2f\n", g_calibration_factor);
+        }
+    }
+
+    // -------------------------------------------------------------
+    // Path 3: Periodic Channel Verification & Self-Healing Sync (Every 15s)
+    // -------------------------------------------------------------
+    static uint32_t last_channel_check = 0;
+    if (millis() - last_channel_check >= 15000) {
+        last_channel_check = millis();
+        if (g_radio_is_on && !g_orch_trigger) {
+            if (!g_channel_ack_received) {
+                Serial.printf("[%s] [CHANNEL SYNC] Main Controller not heard. Hunting active channel...\n", TAG);
+                auto_channel_hunt();
+            } else {
+                g_channel_ack_received = false;
+                send_espnow_response(CMD_PING, 0.0f, 0);
+            }
         }
     }
 

@@ -222,7 +222,8 @@ static void on_espnow_data_recv(const uint8_t *mac, const uint8_t *data, int len
 
     switch (pkt->opcode) {
         case CMD_MOVE_CARRIAGE: {
-            // Target height can be in data.height or data.stepper_cmd.target_height_cm
+            Serial.printf("[%s] >>> Kiosk Trigger: CMD_MOVE_CARRIAGE received! Sending Immediate ACK... <<<\n", TAG);
+            send_espnow_response(RESP_STEPPER_ACK, g_current_height_cm, STATUS_BUSY_MEASURING);
             float target = pkt->data.height;
             if (target <= 0.0f) target = pkt->data.stepper_cmd.target_height_cm;
             g_target_height_req = target;
@@ -232,8 +233,14 @@ static void on_espnow_data_recv(const uint8_t *mac, const uint8_t *data, int len
         }
 
         case CMD_RETURN_HOME:
+            Serial.printf("[%s] >>> Kiosk Trigger: CMD_RETURN_HOME received! Sending Immediate ACK... <<<\n", TAG);
+            send_espnow_response(RESP_STEPPER_ACK, g_current_height_cm, STATUS_BUSY_MEASURING);
             g_trigger_home = true;
             g_emergency_halt = false;
+            break;
+
+        case CMD_ACK:
+            Serial.printf("[%s] >>> Main Controller confirmed receipt of stepper ACK! <<<\n", TAG);
             break;
 
         case CMD_EMERGENCY_HALT:
@@ -387,6 +394,21 @@ void loop() {
             g_emergency_halt = true;
             set_motor_power(false);
             g_stepper.stop();
+        }
+    }
+
+    // Periodic Channel Verification & Self-Healing Sync (Every 15s)
+    static uint32_t last_channel_check = 0;
+    if (millis() - last_channel_check >= 15000) {
+        last_channel_check = millis();
+        if (!g_trigger_move && !g_trigger_home) {
+            if (!g_channel_ack_received) {
+                Serial.printf("[%s] [CHANNEL SYNC] Main Controller not heard. Hunting active channel...\n", TAG);
+                auto_channel_hunt();
+            } else {
+                g_channel_ack_received = false;
+                send_espnow_response(CMD_PING, g_current_height_cm, 0);
+            }
         }
     }
 

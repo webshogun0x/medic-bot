@@ -45,3 +45,4 @@ PROJECT_SUMMARY.txt
 node_modules/
 __pycache__/
 *.pyc
+my_note.md

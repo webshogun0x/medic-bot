@@ -355,7 +355,13 @@ static void on_espnow_data_recv(uint8_t *mac, uint8_t *data, uint8_t len) {
 
     switch (pkt->opcode) {
         case CMD_MEASURE_TEMP:
+            Serial.printf("[%s] >>> Kiosk Trigger: CMD_MEASURE_TEMP received! Sending Immediate ACK... <<<\n", TAG);
+            send_espnow_response(RESP_TEMP, 0.0f, STATUS_BUSY_MEASURING);
             g_trigger_measurement = true;
+            break;
+
+        case CMD_ACK:
+            Serial.printf("[%s] >>> Main Controller confirmed receipt of temp reading! <<<\n", TAG);
             break;
 
         case CMD_PING:
@@ -583,6 +589,21 @@ void loop() {
                               amb, g_mlx.readObjectTempC());
             } else {
                 Serial.println(">>> MLX90614 offline.");
+            }
+        }
+    }
+
+    // Periodic Channel Verification & Self-Healing Sync (Every 15s)
+    static uint32_t last_channel_check = 0;
+    if (millis() - last_channel_check >= 15000) {
+        last_channel_check = millis();
+        if (!g_trigger_measurement) {
+            if (!g_channel_ack_received) {
+                Serial.printf("[%s] [CHANNEL SYNC] Main Controller not heard. Hunting active channel...\n", TAG);
+                auto_channel_hunt();
+            } else {
+                g_channel_ack_received = false;
+                send_espnow_response(CMD_PING, 36.5f, 0);
             }
         }
     }

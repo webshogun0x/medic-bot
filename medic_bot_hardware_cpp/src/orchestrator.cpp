@@ -502,6 +502,7 @@ void KioskOrchestrator::startMeasurementStep(MeasurementStep step) {
     m_measStep = step;
     m_stepStartTimeMs = (uint32_t)(esp_timer_get_time() / 1000ULL);
     m_stepRetryCount = 0;
+    m_nodeMeasuring = false;
 
     switch (step) {
         case MeasurementStep::STEP_1_WEIGHT:
@@ -624,20 +625,35 @@ void KioskOrchestrator::checkMeasurementTimeouts() {
 
     switch (m_measStep) {
         case MeasurementStep::STEP_1_WEIGHT:
-            timeout_ms = 4000;
-            max_retries = 2;
+            if (m_nodeMeasuring) {
+                timeout_ms = 15000; // 15 seconds window while node measures in quiet mode
+                max_retries = 0;    // Do not spam RF packets while node's radio is off
+            } else {
+                timeout_ms = 1500;  // Expect immediate ACK within 1.5s
+                max_retries = 2;    // Retry up to 2 times to reach node
+            }
             break;
         case MeasurementStep::STEP_2_HEIGHT:
-            timeout_ms = 3500;
-            max_retries = 2;
+            if (m_nodeMeasuring) {
+                timeout_ms = 8000;
+                max_retries = 0;
+            } else {
+                timeout_ms = 1500;
+                max_retries = 2;
+            }
             break;
         case MeasurementStep::STEP_3_STEPPER_ALIGN:
             timeout_ms = 12000;
             max_retries = 1;
             break;
         case MeasurementStep::STEP_4_TEMP:
-            timeout_ms = 4000;
-            max_retries = 2;
+            if (m_nodeMeasuring) {
+                timeout_ms = 8000;
+                max_retries = 0;
+            } else {
+                timeout_ms = 1500;
+                max_retries = 2;
+            }
             break;
         case MeasurementStep::STEP_5_STEPPER_HOME:
             timeout_ms = 15000;
@@ -827,11 +843,26 @@ void KioskOrchestrator::processEvent(const sys_event_t &evt) {
                 ESP_LOGW(TAG, "Ignoring unexpected Weight packet (state=%d, step=%d)", (int)m_state, (int)m_measStep);
                 break;
             }
+
+            // Phase 1: Handle Immediate Command ACK from Node
+            if (evt.payload.espnow_pkt.magic == ESPNOW_MAGIC_BYTE &&
+                evt.payload.espnow_pkt.status == STATUS_BUSY_MEASURING) {
+                ESP_LOGI(TAG, "⚡ Node 0x01 Immediate ACK: Command accepted! Scale is measuring in quiet mode...");
+                m_nodeMeasuring = true;
+                m_stepStartTimeMs = (uint32_t)(esp_timer_get_time() / 1000ULL); // Reset timer for full quiet sampling window
+                getDisplay().sendPrompt("Step 1/5: Weight node active. Please stand still on scale platform...");
+                break;
+            }
+
+            // Phase 2: Final Data Packet Received
             float w = (evt.payload.espnow_pkt.magic == ESPNOW_MAGIC_BYTE) ?
                       evt.payload.espnow_pkt.data.weight : evt.payload.espnow_node_data.val;
             m_latestVitals.weight = (w > 0.0f) ? w : 0.0f;
             ESP_LOGI(TAG, "✅ Step 1/5 Complete: Weight = %.1f kg (Status=%d)",
                      m_latestVitals.weight, evt.payload.espnow_pkt.status);
+
+            // Send Final Receipt ACK back to Node 0x01
+            getEspNow().sendCommand(NODE_WEIGHT_SCALE, CMD_ACK, 0.0f);
 
             // Advance to Step 2: Height
             startMeasurementStep(MeasurementStep::STEP_2_HEIGHT);
@@ -843,6 +874,18 @@ void KioskOrchestrator::processEvent(const sys_event_t &evt) {
                 ESP_LOGW(TAG, "Ignoring unexpected Height packet (state=%d, step=%d)", (int)m_state, (int)m_measStep);
                 break;
             }
+
+            // Phase 1: Handle Immediate Command ACK from Node 0x02
+            if (evt.payload.espnow_pkt.magic == ESPNOW_MAGIC_BYTE &&
+                evt.payload.espnow_pkt.status == STATUS_BUSY_MEASURING) {
+                ESP_LOGI(TAG, "⚡ Node 0x02 Immediate ACK: Command accepted! Sonar/Laser sensors active...");
+                m_nodeMeasuring = true;
+                m_stepStartTimeMs = (uint32_t)(esp_timer_get_time() / 1000ULL);
+                getDisplay().sendPrompt("Step 2/5: Height node measuring... Please stand upright.");
+                break;
+            }
+
+            // Phase 2: Final Data Received
             float h_sonar_cm = 0.0f;
             float h_laser_cm = 0.0f;
 
@@ -860,6 +903,9 @@ void KioskOrchestrator::processEvent(const sys_event_t &evt) {
             m_latestVitals.height_laser = (h_laser_cm > 0.0f) ? (h_laser_cm / 100.0f) : m_latestVitals.height_sonar;
             ESP_LOGI(TAG, "✅ Step 2/5 Complete: Height Sonar=%.1f cm, Laser=%.1f cm (Status=%d)",
                      h_sonar_cm, h_laser_cm, evt.payload.espnow_pkt.status);
+
+            // Send Final Receipt ACK to Node 0x02
+            getEspNow().sendCommand(NODE_HEIGHT_SONAR, CMD_ACK, 0.0f);
 
             // Step 3: Move Stepper carriage to forehead level
             // Crown to forehead anatomical offset is ~10 cm
@@ -889,11 +935,14 @@ void KioskOrchestrator::processEvent(const sys_event_t &evt) {
             if (m_measStep == MeasurementStep::STEP_3_STEPPER_ALIGN) {
                 ESP_LOGI(TAG, "✅ Step 3/5 Complete: Carriage aligned at forehead level (Pos=%.1f cm, Status=%d)",
                          evt.payload.espnow_pkt.data.height, evt.payload.espnow_pkt.status);
+                // Send Final Receipt ACK to Node 0x03
+                getEspNow().sendCommand(NODE_STEPPER_GANTRY, CMD_ACK, 0.0f);
                 // Advance to Step 4: Temperature
                 startMeasurementStep(MeasurementStep::STEP_4_TEMP);
             } else if (m_measStep == MeasurementStep::STEP_5_STEPPER_HOME) {
                 ESP_LOGI(TAG, "✅ Carriage Homing ACK received (Pos=%.1f cm, Status=%d)",
                          evt.payload.espnow_pkt.data.height, evt.payload.espnow_pkt.status);
+                getEspNow().sendCommand(NODE_STEPPER_GANTRY, CMD_ACK, 0.0f);
                 m_stepperHomed = true;
                 if (m_oximeterFinished) {
                     finishOrchestratedMeasurement();
@@ -907,6 +956,18 @@ void KioskOrchestrator::processEvent(const sys_event_t &evt) {
                 ESP_LOGW(TAG, "Ignoring unexpected Temp packet (state=%d, step=%d)", (int)m_state, (int)m_measStep);
                 break;
             }
+
+            // Phase 1: Handle Immediate Command ACK from Node 0x04
+            if (evt.payload.espnow_pkt.magic == ESPNOW_MAGIC_BYTE &&
+                evt.payload.espnow_pkt.status == STATUS_BUSY_MEASURING) {
+                ESP_LOGI(TAG, "⚡ Node 0x04 Immediate ACK: Command accepted! Temp carriage measuring...");
+                m_nodeMeasuring = true;
+                m_stepStartTimeMs = (uint32_t)(esp_timer_get_time() / 1000ULL);
+                getDisplay().sendPrompt("Step 4/5: Measuring forehead temperature... Please hold still.");
+                break;
+            }
+
+            // Phase 2: Final Data Received
             float body_temp = 0.0f;
             float amb_temp = 0.0f;
 
@@ -922,6 +983,9 @@ void KioskOrchestrator::processEvent(const sys_event_t &evt) {
             m_latestVitals.temperature = (body_temp > 25.0f && body_temp < 45.0f) ? body_temp : 36.5f;
             ESP_LOGI(TAG, "✅ Step 4/5 Complete: Forehead Body Temp = %.1f C, Ambient = %.1f C (Status=%d)",
                      body_temp, amb_temp, evt.payload.espnow_pkt.status);
+
+            // Send Final Receipt ACK to Node 0x04
+            getEspNow().sendCommand(NODE_TEMP_CARRIAGE, CMD_ACK, 0.0f);
 
             // Advance to Step 5: Return carriage home and measure pulse oximeter
             startMeasurementStep(MeasurementStep::STEP_5_STEPPER_HOME);

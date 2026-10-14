@@ -19,6 +19,7 @@ typedef enum {
 
 typedef enum {
     CMD_PING             = 0x10,
+    CMD_ACK              = 0x11,
     CMD_GET_WEIGHT       = 0x20,
     CMD_GET_HEIGHT       = 0x30,
     CMD_GET_GANTRY_POS   = 0x35,
@@ -33,6 +34,12 @@ typedef enum {
     RESP_GANTRY_POS      = 0x85,
     RESP_ERROR           = 0xFF
 } espnow_cmd_t;
+
+/* Handshake Status Codes */
+#define STATUS_OK              0x00
+#define STATUS_ERROR           0x01
+#define STATUS_BUSY_MEASURING  0xAA  // Immediate ACK: node accepted command, measuring
+#define STATUS_DATA_RECEIVED   0x55  // Final ACK: Main Controller safely recorded reading
 
 typedef struct __attribute__((packed)) {
     uint8_t magic;         // 0x4D ('M')

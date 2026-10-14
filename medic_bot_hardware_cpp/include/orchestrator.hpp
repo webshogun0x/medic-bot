@@ -47,6 +47,7 @@ private:
     float m_targetForeheadHeightCm;
     bool m_stepperHomed;
     bool m_oximeterFinished;
+    bool m_nodeMeasuring;
     uint32_t m_oximeterPromptTimeMs;
 
     user_profile_t m_currentUser;

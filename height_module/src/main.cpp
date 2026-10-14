@@ -287,11 +287,18 @@ static void on_espnow_data_recv(const uint8_t *mac, const uint8_t *data, int len
 
     switch (pkt->opcode) {
         case CMD_GET_HEIGHT:
+            Serial.printf("[%s] >>> Kiosk Trigger: CMD_GET_HEIGHT received! Sending Immediate ACK... <<<\n", TAG);
+            // Send Immediate ACK while beginning sensor fusion
+            send_espnow_response(RESP_HEIGHT, 0.0f, STATUS_BUSY_MEASURING);
             g_trigger_patient_measurement = true;
             break;
 
         case CMD_GET_GANTRY_POS:
             g_trigger_gantry_measurement = true;
+            break;
+
+        case CMD_ACK:
+            Serial.printf("[%s] >>> Main Controller confirmed receipt of height reading! <<<\n", TAG);
             break;
 
         case CMD_PING:
@@ -514,6 +521,21 @@ void loop() {
             Serial.printf("Sonar 3 (R):  %.1f cm\n", s3);
             Serial.printf("Sonar 4 (G):  %.1f cm\n", s4);
             Serial.printf("Laser ToF:    %.1f cm\n\n", tof);
+        }
+    }
+
+    // Periodic Channel Verification & Self-Healing Sync (Every 15s)
+    static uint32_t last_channel_check = 0;
+    if (millis() - last_channel_check >= 15000) {
+        last_channel_check = millis();
+        if (!g_trigger_patient_measurement && !g_trigger_gantry_measurement) {
+            if (!g_channel_ack_received) {
+                Serial.printf("[%s] [CHANNEL SYNC] Main Controller not heard. Hunting active channel...\n", TAG);
+                auto_channel_hunt();
+            } else {
+                g_channel_ack_received = false;
+                send_espnow_response(CMD_PING, 0.0f, 0);
+            }
         }
     }
 
