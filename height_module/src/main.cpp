@@ -48,6 +48,8 @@ static uint16_t g_packet_seq = 0;
 // Measurement trigger flags
 static volatile bool g_trigger_patient_measurement = false;
 static volatile bool g_trigger_gantry_measurement = false;
+static volatile bool g_send_immediate_ack = false;
+static volatile bool g_send_ping_ack = false;
 static volatile bool g_channel_ack_received = false;
 static uint8_t g_active_channel = 1;
 
@@ -287,9 +289,7 @@ static void on_espnow_data_recv(const uint8_t *mac, const uint8_t *data, int len
 
     switch (pkt->opcode) {
         case CMD_GET_HEIGHT:
-            Serial.printf("[%s] >>> Kiosk Trigger: CMD_GET_HEIGHT received! Sending Immediate ACK... <<<\n", TAG);
-            // Send Immediate ACK while beginning sensor fusion
-            send_espnow_response(RESP_HEIGHT, 0.0f, STATUS_BUSY_MEASURING);
+            g_send_immediate_ack = true;
             g_trigger_patient_measurement = true;
             break;
 
@@ -302,7 +302,7 @@ static void on_espnow_data_recv(const uint8_t *mac, const uint8_t *data, int len
             break;
 
         case CMD_PING:
-            send_espnow_response(RESP_HEIGHT, 0.0f, 0); // ACK
+            g_send_ping_ack = true;
             break;
 
         default:
@@ -372,16 +372,19 @@ static void init_espnow() {
  * ========================================================================= */
 void setup() {
     Serial.begin(115200);
-    delay(1000);
+    delay(500);
 
     Serial.println("\n==================================================");
     Serial.println("   MediBot Health Kiosk - Height Subsystem");
     Serial.println("   ESP-WROOM-32 Multi-Sensor Fusion Engine");
     Serial.println("==================================================");
 
-    // 1. Configure Ultrasonic GPIO Pins
+    // 1. Initialize ESP-NOW & Radio FIRST so node immediately joins network & syncs channel
+    init_espnow();
+
+    // 2. Configure Ultrasonic GPIO Pins
     pinMode(PIN_SONAR1_TRIG, OUTPUT);
-    pinMode(PIN_SONAR1_ECHO, INPUT);
+    pinMode(PIN_SONAR1_ECHO, INPUT_PULLDOWN);
     digitalWrite(PIN_SONAR1_TRIG, LOW);
 
     pinMode(PIN_SONAR2_TRIG, OUTPUT);
@@ -402,11 +405,13 @@ void setup() {
     Serial.printf("  - Sonar 3 (Patient Right):  Trig=%d, Echo=%d\n", PIN_SONAR3_TRIG, PIN_SONAR3_ECHO);
     Serial.printf("  - Sonar 4 (Gantry Tracker): Trig=%d, Echo=%d\n", PIN_GANTRY_TRIG, PIN_GANTRY_ECHO);
 
-    // 2. Full I2C Bus Scan & Multi-Driver VL53 Laser Sensor Cascade
+    // 3. Full I2C Bus Scan & Multi-Driver VL53 Laser Sensor Cascade
     Serial.println("\n--- FULL I2C BUS SCAN (SDA=21, SCL=22) ---");
+    pinMode(PIN_I2C_SDA, INPUT_PULLUP);
+    pinMode(PIN_I2C_SCL, INPUT_PULLUP);
     Wire.begin(PIN_I2C_SDA, PIN_I2C_SCL);
     Wire.setClock(100000);
-    Wire.setTimeOut(100);
+    Wire.setTimeOut(50);
 
     bool found_29 = false;
     for (uint8_t addr = 1; addr < 127; addr++) {
@@ -471,13 +476,22 @@ void setup() {
         Serial.println("[SETUP] Notice: No I2C device detected at address 0x29.");
     }
 
-    // 3. Initialize ESP-NOW
-    init_espnow();
-
     Serial.println("[SETUP] Height Subsystem Ready. Type 'm' in Serial for test measurement, 'g' for gantry position.");
 }
 
 void loop() {
+    // 0. Immediate Handshake ACK to confirm command acceptance
+    if (g_send_immediate_ack) {
+        g_send_immediate_ack = false;
+        Serial.printf("[%s] >>> Kiosk Trigger: CMD_GET_HEIGHT received! Sending Immediate ACK... <<<\n", TAG);
+        send_espnow_response(RESP_HEIGHT, 0.0f, STATUS_BUSY_MEASURING);
+    }
+
+    if (g_send_ping_ack) {
+        g_send_ping_ack = false;
+        send_espnow_response(RESP_HEIGHT, 0.0f, 0);
+    }
+
     // 1. Handle ESP-NOW Triggered Patient Height Measurement
     if (g_trigger_patient_measurement) {
         g_trigger_patient_measurement = false;
@@ -485,7 +499,14 @@ void loop() {
         float sonar_ht = 0.0f, laser_ht = 0.0f;
         measure_patient_height_cm(sonar_ht, laser_ht);
         uint8_t status = (sonar_ht > 0.0f || laser_ht > 0.0f) ? 0 : 1; // 0 = OK, 1 = Error
-        send_espnow_response(RESP_HEIGHT, sonar_ht, status, laser_ht);
+
+        // Send 3 bursts so master receives even if RF packet drops
+        for (int i = 0; i < 3; i++) {
+            send_espnow_response(RESP_HEIGHT, sonar_ht, status, laser_ht);
+            delay(15);
+        }
+        Serial.printf("[%s] ✅ Vitals Step 2 Complete! Sent Sonar=%.1f cm, Laser=%.1f cm to Main Controller.\n",
+                      TAG, sonar_ht, laser_ht);
     }
 
     // 2. Handle ESP-NOW Triggered Gantry Position Measurement
