@@ -38,6 +38,8 @@ static uint16_t g_packet_seq = 0;
 static uint8_t g_active_channel = 1;
 
 static volatile bool g_orch_trigger = false;
+static volatile bool g_send_immediate_ack = false;
+static volatile bool g_send_ping_ack = false;
 static volatile bool g_channel_ack_received = false;
 static bool g_radio_is_on = false;
 
@@ -99,7 +101,15 @@ static void send_espnow_response(uint8_t opcode, float value, uint8_t status) {
     pkt.status = status;
     pkt.data.weight = value;
 
-    // Send 3 burst transmissions to guarantee delivery to Main Controller
+    // For Immediate ACK or Ping, send a single packet instantly without delay
+    if (status == STATUS_BUSY_MEASURING || opcode == CMD_PING) {
+        int res = esp_now_send(g_broadcast_mac, (uint8_t *)&pkt, sizeof(pkt));
+        Serial.printf("[%s] Sent ESP-NOW ACK (Opcode 0x%02X, Status: %d, Res: %d)\n",
+                      TAG, opcode, status, res);
+        return;
+    }
+
+    // Send 3 burst transmissions for final data to guarantee delivery
     for (int i = 0; i < 3; i++) {
         int res = esp_now_send(g_broadcast_mac, (uint8_t *)&pkt, sizeof(pkt));
         if (res == 0) {
@@ -110,6 +120,7 @@ static void send_espnow_response(uint8_t opcode, float value, uint8_t status) {
     }
 }
 
+// ISR Callback: Must NEVER call delay() or heavy operations in sys context
 static void on_espnow_data_recv(uint8_t *mac, uint8_t *data, uint8_t len) {
     if (len != sizeof(espnow_kiosk_packet_t)) return;
 
@@ -124,18 +135,16 @@ static void on_espnow_data_recv(uint8_t *mac, uint8_t *data, uint8_t len) {
 
     switch (pkt->opcode) {
         case CMD_GET_WEIGHT:
-            Serial.printf("[%s] >>> Kiosk Trigger: CMD_GET_WEIGHT received! Sending Immediate ACK... <<<\n", TAG);
-            // 1. Send Immediate ACK while Wi-Fi is still alive (takes ~5ms)
-            send_espnow_response(RESP_WEIGHT, 0.0f, STATUS_BUSY_MEASURING);
+            // Set flags for loop() to send Immediate ACK and begin measurement in user context
+            g_send_immediate_ack = true;
             g_orch_trigger = true;
             break;
 
         case CMD_ACK:
-            Serial.printf("[%s] >>> Main Controller confirmed receipt of weight reading! <<<\n", TAG);
             break;
 
         case CMD_PING:
-            send_espnow_response(RESP_WEIGHT, 0.0f, 0);
+            g_send_ping_ack = true;
             break;
 
         default:
@@ -304,21 +313,35 @@ void setup() {
 
 void loop() {
     // -------------------------------------------------------------
+    // Path 0: Immediate Handshake Responses (Executed safely in user task context)
+    // -------------------------------------------------------------
+    if (g_send_immediate_ack) {
+        g_send_immediate_ack = false;
+        Serial.printf("[%s] >>> Kiosk Trigger: CMD_GET_WEIGHT received! Sending Immediate ACK... <<<\n", TAG);
+        send_espnow_response(RESP_WEIGHT, 0.0f, STATUS_BUSY_MEASURING);
+    }
+
+    if (g_send_ping_ack) {
+        g_send_ping_ack = false;
+        send_espnow_response(RESP_WEIGHT, 0.0f, 0);
+    }
+
+    // -------------------------------------------------------------
     // Path 1: Kiosk Orchestrated Trigger (CMD_GET_WEIGHT)
     // -------------------------------------------------------------
     if (g_orch_trigger) {
         g_orch_trigger = false;
 
         // 1. Shut off radio completely & wait for human (>= 15kg) to be on scale
-        float final_weight = measure_human_quiet_weight(PATIENT_DETECT_MIN_KG, 12000);
+        float final_weight = measure_human_quiet_weight(PATIENT_DETECT_MIN_KG, 25000);
 
         // 2. Turn radio ON only after measurement is ready to send
         power_on_radio();
 
-        uint8_t status = (final_weight >= PATIENT_DETECT_MIN_KG) ? 0 : 1;
+        uint8_t status = (final_weight >= PATIENT_DETECT_MIN_KG) ? STATUS_OK : STATUS_ERROR;
         send_espnow_response(RESP_WEIGHT, final_weight, status);
 
-        if (status == 0) {
+        if (status == STATUS_OK) {
             Serial.printf("[%s] ✅ Vitals Step 1 Complete! Weight %.2f kg sent to Main Controller.\n",
                           TAG, final_weight);
         } else {

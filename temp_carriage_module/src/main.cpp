@@ -38,6 +38,8 @@ static bool g_lcd_detected = false;
 static uint8_t g_broadcast_mac[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 static uint16_t g_packet_seq = 0;
 static volatile bool g_trigger_measurement = false;
+static volatile bool g_send_immediate_ack = false;
+static volatile bool g_send_ping_ack = false;
 static volatile bool g_channel_ack_received = false;
 static uint8_t g_active_channel = 1;
 
@@ -355,17 +357,15 @@ static void on_espnow_data_recv(uint8_t *mac, uint8_t *data, uint8_t len) {
 
     switch (pkt->opcode) {
         case CMD_MEASURE_TEMP:
-            Serial.printf("[%s] >>> Kiosk Trigger: CMD_MEASURE_TEMP received! Sending Immediate ACK... <<<\n", TAG);
-            send_espnow_response(RESP_TEMP, 0.0f, STATUS_BUSY_MEASURING);
+            g_send_immediate_ack = true;
             g_trigger_measurement = true;
             break;
 
         case CMD_ACK:
-            Serial.printf("[%s] >>> Main Controller confirmed receipt of temp reading! <<<\n", TAG);
             break;
 
         case CMD_PING:
-            send_espnow_response(RESP_TEMP, 36.5f, 0); // ACK
+            g_send_ping_ack = true;
             break;
 
         default:
@@ -514,6 +514,18 @@ void loop() {
                 in_range_count = 0;
             }
         }
+    }
+
+    // 2.5 Process Immediate Handshake ACK & Ping
+    if (g_send_immediate_ack) {
+        g_send_immediate_ack = false;
+        Serial.printf("[%s] >>> Kiosk Trigger: CMD_MEASURE_TEMP received! Sending Immediate ACK... <<<\n", TAG);
+        send_espnow_response(RESP_TEMP, 0.0f, STATUS_BUSY_MEASURING);
+    }
+
+    if (g_send_ping_ack) {
+        g_send_ping_ack = false;
+        send_espnow_response(RESP_TEMP, 36.5f, 0);
     }
 
     // 3. Process Triggered Temperature Measurement (ESP-NOW, Proximity, or Serial)
