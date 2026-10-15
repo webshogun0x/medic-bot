@@ -629,8 +629,8 @@ void KioskOrchestrator::checkMeasurementTimeouts() {
                 timeout_ms = 15000; // 15 seconds window while node measures in quiet mode
                 max_retries = 0;    // Do not spam RF packets while node's radio is off
             } else {
-                timeout_ms = 1500;  // Expect immediate ACK within 1.5s
-                max_retries = 2;    // Retry up to 2 times to reach node
+                timeout_ms = 3500;  // 3.5s presence check
+                max_retries = 2;    // Retry up to 2 times to reach node (total 10.5s)
             }
             break;
         case MeasurementStep::STEP_2_HEIGHT:
@@ -638,25 +638,30 @@ void KioskOrchestrator::checkMeasurementTimeouts() {
                 timeout_ms = 8000;
                 max_retries = 0;
             } else {
-                timeout_ms = 1500;
+                timeout_ms = 3500;
                 max_retries = 2;
             }
             break;
         case MeasurementStep::STEP_3_STEPPER_ALIGN:
-            timeout_ms = 12000;
-            max_retries = 1;
+            if (m_nodeMeasuring) {
+                timeout_ms = 25000; // Stepper physical travel takes 15-20s across gantry stroke
+                max_retries = 0;
+            } else {
+                timeout_ms = 3500;
+                max_retries = 2;
+            }
             break;
         case MeasurementStep::STEP_4_TEMP:
             if (m_nodeMeasuring) {
                 timeout_ms = 8000;
                 max_retries = 0;
             } else {
-                timeout_ms = 1500;
+                timeout_ms = 3500;
                 max_retries = 2;
             }
             break;
         case MeasurementStep::STEP_5_STEPPER_HOME:
-            timeout_ms = 15000;
+            timeout_ms = 25000;     // Homing mechanical travel
             max_retries = 0;
             break;
         default:
@@ -927,11 +932,28 @@ void KioskOrchestrator::processEvent(const sys_event_t &evt) {
 
         case EVT_ESPNOW_STEPPER_ACK: {
             if (m_state != OrchestratorState::MEASURING_VITALS) {
-                ESP_LOGI(TAG, "Stepper ACK received outside measurement sequence (Pos=%.1f cm)",
-                         evt.payload.espnow_pkt.data.height);
+                ESP_LOGI(TAG, "Stepper packet received outside measurement sequence (Pos=%.1f cm, Status=%d)",
+                         evt.payload.espnow_pkt.data.height, evt.payload.espnow_pkt.status);
                 break;
             }
 
+            // Phase 1: Handle Immediate Command ACK (Node 0x03 accepted move/home command)
+            if (evt.payload.espnow_pkt.magic == ESPNOW_MAGIC_BYTE &&
+                evt.payload.espnow_pkt.status == STATUS_BUSY_MEASURING) {
+                if (m_measStep == MeasurementStep::STEP_3_STEPPER_ALIGN) {
+                    ESP_LOGI(TAG, "⚡ Node 0x03 Immediate ACK: Carriage moving to forehead level (Target: %.1f cm)...", m_targetForeheadHeightCm);
+                    m_nodeMeasuring = true;
+                    m_stepStartTimeMs = (uint32_t)(esp_timer_get_time() / 1000ULL);
+                    getDisplay().sendPrompt("Step 3/5: Positioning scanner carriage to forehead level... Please wait.");
+                } else if (m_measStep == MeasurementStep::STEP_5_STEPPER_HOME) {
+                    ESP_LOGI(TAG, "⚡ Node 0x03 Immediate ACK: Carriage homing in progress...");
+                    m_nodeMeasuring = true;
+                    m_stepStartTimeMs = (uint32_t)(esp_timer_get_time() / 1000ULL);
+                }
+                break;
+            }
+
+            // Phase 2: Physical Motion Complete (Status == STATUS_OK or finished)
             if (m_measStep == MeasurementStep::STEP_3_STEPPER_ALIGN) {
                 ESP_LOGI(TAG, "✅ Step 3/5 Complete: Carriage aligned at forehead level (Pos=%.1f cm, Status=%d)",
                          evt.payload.espnow_pkt.data.height, evt.payload.espnow_pkt.status);
@@ -940,7 +962,7 @@ void KioskOrchestrator::processEvent(const sys_event_t &evt) {
                 // Advance to Step 4: Temperature
                 startMeasurementStep(MeasurementStep::STEP_4_TEMP);
             } else if (m_measStep == MeasurementStep::STEP_5_STEPPER_HOME) {
-                ESP_LOGI(TAG, "✅ Carriage Homing ACK received (Pos=%.1f cm, Status=%d)",
+                ESP_LOGI(TAG, "✅ Carriage Homing Complete (Pos=%.1f cm, Status=%d)",
                          evt.payload.espnow_pkt.data.height, evt.payload.espnow_pkt.status);
                 getEspNow().sendCommand(NODE_STEPPER_GANTRY, CMD_ACK, 0.0f);
                 m_stepperHomed = true;

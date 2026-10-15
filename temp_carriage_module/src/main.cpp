@@ -382,9 +382,11 @@ static void auto_channel_hunt() {
 
         g_channel_ack_received = false;
         send_espnow_response(CMD_PING, 36.5f, 0);
+        delay(10);
+        send_espnow_response(CMD_PING, 36.5f, 0);
 
         uint32_t start_ms = millis();
-        while (millis() - start_ms < 45) {
+        while (millis() - start_ms < 60) {
             if (g_channel_ack_received) {
                 g_active_channel = ch;
                 Serial.printf("[%s] >>> SUCCESS: Locked to Main Controller on Channel %d! <<<\n", TAG, ch);

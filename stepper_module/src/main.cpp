@@ -264,11 +264,13 @@ static void auto_channel_hunt() {
         esp_wifi_set_channel(ch, WIFI_SECOND_CHAN_NONE);
         g_channel_ack_received = false;
 
-        // Send discovery ping to Main Controller
+        // Send 2 discovery pings to guarantee reception
+        send_espnow_response(CMD_PING, g_current_height_cm, 0);
+        delay(10);
         send_espnow_response(CMD_PING, g_current_height_cm, 0);
 
         uint32_t start_ms = millis();
-        while (millis() - start_ms < 45) {
+        while (millis() - start_ms < 60) {
             if (g_channel_ack_received) {
                 g_active_channel = ch;
                 Serial.printf("[%s] >>> SUCCESS: Locked to Main Controller on Channel %d! <<<\n", TAG, ch);

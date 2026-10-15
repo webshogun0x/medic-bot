@@ -316,11 +316,13 @@ static void auto_channel_hunt() {
         esp_wifi_set_channel(ch, WIFI_SECOND_CHAN_NONE);
         g_channel_ack_received = false;
 
-        // Send discovery ping to Main Controller
+        // Send 2 discovery pings to guarantee reception
+        send_espnow_response(CMD_PING, 0.0f, 0);
+        delay(10);
         send_espnow_response(CMD_PING, 0.0f, 0);
 
         uint32_t start_ms = millis();
-        while (millis() - start_ms < 45) {
+        while (millis() - start_ms < 60) {
             if (g_channel_ack_received) {
                 g_active_channel = ch;
                 Serial.printf("[%s] >>> SUCCESS: Locked to Main Controller on Channel %d! <<<\n", TAG, ch);
@@ -404,6 +406,7 @@ void setup() {
     Serial.println("\n--- FULL I2C BUS SCAN (SDA=21, SCL=22) ---");
     Wire.begin(PIN_I2C_SDA, PIN_I2C_SCL);
     Wire.setClock(100000);
+    Wire.setTimeOut(100);
 
     bool found_29 = false;
     for (uint8_t addr = 1; addr < 127; addr++) {
