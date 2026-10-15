@@ -615,10 +615,8 @@ void KioskOrchestrator::checkMeasurementTimeouts() {
 
     // 2. Periodic Command Retry before Immediate ACK
     // If the node has not yet acknowledged (m_nodeMeasuring == false), re-send trigger command every 3 seconds
-    static uint32_t s_last_retry_ms = 0;
     if (!m_nodeMeasuring && m_measStep != MeasurementStep::STEP_5_STEPPER_HOME) {
-        if (now - s_last_retry_ms >= 3000) {
-            s_last_retry_ms = now;
+        if (elapsed >= (uint32_t)(m_stepRetryCount + 1) * 3000) {
             m_stepRetryCount++;
             ESP_LOGI(TAG, "Step %d: Awaiting node handshake (elapsed %lu ms, attempt %d)...",
                      (int)m_measStep, elapsed, m_stepRetryCount);

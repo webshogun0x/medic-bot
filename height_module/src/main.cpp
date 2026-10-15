@@ -311,18 +311,24 @@ static void on_espnow_data_recv(const uint8_t *mac, const uint8_t *data, int len
 }
 
 static void auto_channel_hunt() {
-    Serial.printf("[%s] Starting Auto-Channel Hunt (Scanning 2.4 GHz channels 1-13)...\n", TAG);
-    for (uint8_t ch = 1; ch <= 13; ch++) {
+    Serial.printf("[%s] Starting Auto-Channel Hunt (Scanning 2.4 GHz channels)...\n", TAG);
+
+    // Prioritized channel order: Primary non-overlapping channels (1, 6, 11) first
+    const uint8_t scan_order[] = {1, 6, 11, 2, 3, 4, 5, 7, 8, 9, 10, 12, 13};
+    const size_t num_channels = sizeof(scan_order) / sizeof(scan_order[0]);
+
+    for (size_t i = 0; i < num_channels; i++) {
+        uint8_t ch = scan_order[i];
         esp_wifi_set_channel(ch, WIFI_SECOND_CHAN_NONE);
         g_channel_ack_received = false;
 
         // Send 2 discovery pings to guarantee reception
         send_espnow_response(CMD_PING, 0.0f, 0);
-        delay(10);
+        delay(15);
         send_espnow_response(CMD_PING, 0.0f, 0);
 
         uint32_t start_ms = millis();
-        while (millis() - start_ms < 60) {
+        while (millis() - start_ms < 120) {
             if (g_channel_ack_received) {
                 g_active_channel = ch;
                 Serial.printf("[%s] >>> SUCCESS: Locked to Main Controller on Channel %d! <<<\n", TAG, ch);
@@ -331,8 +337,9 @@ static void auto_channel_hunt() {
             delay(5);
         }
     }
-    Serial.printf("[%s] Notice: Main Controller not heard during sweep. Defaulting to Channel %d.\n", TAG, g_active_channel);
-    esp_wifi_set_channel(g_active_channel, WIFI_SECOND_CHAN_NONE);
+    Serial.printf("[%s] Notice: Main Controller not heard during sweep. Defaulting to Channel 1.\n", TAG);
+    g_active_channel = 1;
+    esp_wifi_set_channel(1, WIFI_SECOND_CHAN_NONE);
 }
 
 static void init_espnow() {
