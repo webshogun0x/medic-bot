@@ -88,15 +88,22 @@ static void oximeter_reading_task(void *pvParameters) {
     ESP_LOGI(TAG, "Measurement finished: HR=%ld (valid=%d), SpO2=%ld (valid=%d), Temp=%.1fC",
              heart_rate, valid_hr, spo2, valid_spo2, temp_c);
 
+    bool reading_valid = (valid_hr && heart_rate > 35 && heart_rate < 210 && valid_spo2 && spo2 > 70 && spo2 <= 100);
+
     if (g_sys_event_queue) {
         sys_event_t evt;
         memset(&evt, 0, sizeof(evt));
-        evt.type = EVT_OXIMETER_DONE;
-        evt.payload.oximeter.hr = (valid_hr && heart_rate > 30 && heart_rate < 220) ? (float)heart_rate : 72.0f;
-        evt.payload.oximeter.spo2 = (valid_spo2 && spo2 > 50 && spo2 <= 100) ? (float)spo2 : 98.0f;
-        evt.payload.oximeter.temperature = (temp_c > 20.0f && temp_c < 45.0f) ? temp_c : 36.5f;
-
-        xQueueSend(g_sys_event_queue, &evt, pdMS_TO_TICKS(100));
+        if (reading_valid) {
+            evt.type = EVT_OXIMETER_DONE;
+            evt.payload.oximeter.hr = (float)heart_rate;
+            evt.payload.oximeter.spo2 = (float)spo2;
+            evt.payload.oximeter.temperature = (temp_c > 20.0f && temp_c < 45.0f) ? temp_c : 36.5f;
+            xQueueSend(g_sys_event_queue, &evt, pdMS_TO_TICKS(100));
+        } else {
+            ESP_LOGW(TAG, "Biometric waveform noisy/incomplete. Requesting finger readjustment...");
+            evt.type = EVT_OXIMETER_NO_FINGER;
+            xQueueSend(g_sys_event_queue, &evt, pdMS_TO_TICKS(100));
+        }
     }
 
     s_is_busy = false;

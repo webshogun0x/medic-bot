@@ -601,79 +601,27 @@ void KioskOrchestrator::checkMeasurementTimeouts() {
     uint32_t now = (uint32_t)(esp_timer_get_time() / 1000ULL);
     uint32_t elapsed = now - m_stepStartTimeMs;
 
-    // In Step 5, manage pulse oximeter polling and timeout
-    if (m_measStep == MeasurementStep::STEP_5_STEPPER_HOME) {
-        uint32_t ox_elapsed = now - m_oximeterPromptTimeMs;
-        if (!m_oximeterFinished) {
-            if (ox_elapsed >= 15000) {
-                ESP_LOGW(TAG, "Pulse Oximeter timed out after 15 seconds. Using defaults.");
-                m_latestVitals.heart_rate = 72.0f;
-                m_latestVitals.spo2 = 98.0f;
-                m_oximeterFinished = true;
-                if (m_stepperHomed) {
-                    finishOrchestratedMeasurement();
-                    return;
-                }
-            } else if (!max30102_is_busy()) {
-                max30102_start_measurement();
-            }
-        }
+    // 1. Overall Safety Abort (60 seconds user inactivity ceiling)
+    // If a node is permanently disconnected or patient walked away, abort safely rather than faking data
+    if (elapsed > 60000) {
+        ESP_LOGE(TAG, "Measurement timed out after 60s of inactivity on Step %d. Cancelling sequence.", (int)m_measStep);
+        getDisplay().sendPrompt("⚠️ Measurement timed out. Please tap 'Take Measurement' to try again.");
+        m_measStep = MeasurementStep::IDLE;
+        max30102_cancel_measurement();
+        getEspNow().returnCarriageHome();
+        m_state = OrchestratorState::DASHBOARD_ACTIVE;
+        return;
     }
 
-    uint32_t timeout_ms = 4000;
-    uint8_t max_retries = 2;
-
-    switch (m_measStep) {
-        case MeasurementStep::STEP_1_WEIGHT:
-            if (m_nodeMeasuring) {
-                timeout_ms = 15000; // 15 seconds window while node measures in quiet mode
-                max_retries = 0;    // Do not spam RF packets while node's radio is off
-            } else {
-                timeout_ms = 3500;  // 3.5s presence check
-                max_retries = 2;    // Retry up to 2 times to reach node (total 10.5s)
-            }
-            break;
-        case MeasurementStep::STEP_2_HEIGHT:
-            if (m_nodeMeasuring) {
-                timeout_ms = 8000;
-                max_retries = 0;
-            } else {
-                timeout_ms = 3500;
-                max_retries = 2;
-            }
-            break;
-        case MeasurementStep::STEP_3_STEPPER_ALIGN:
-            if (m_nodeMeasuring) {
-                timeout_ms = 25000; // Stepper physical travel takes 15-20s across gantry stroke
-                max_retries = 0;
-            } else {
-                timeout_ms = 3500;
-                max_retries = 2;
-            }
-            break;
-        case MeasurementStep::STEP_4_TEMP:
-            if (m_nodeMeasuring) {
-                timeout_ms = 8000;
-                max_retries = 0;
-            } else {
-                timeout_ms = 3500;
-                max_retries = 2;
-            }
-            break;
-        case MeasurementStep::STEP_5_STEPPER_HOME:
-            timeout_ms = 25000;     // Homing mechanical travel
-            max_retries = 0;
-            break;
-        default:
-            return;
-    }
-
-    if (elapsed > timeout_ms) {
-        if (m_stepRetryCount < max_retries) {
+    // 2. Periodic Command Retry before Immediate ACK
+    // If the node has not yet acknowledged (m_nodeMeasuring == false), re-send trigger command every 3 seconds
+    static uint32_t s_last_retry_ms = 0;
+    if (!m_nodeMeasuring && m_measStep != MeasurementStep::STEP_5_STEPPER_HOME) {
+        if (now - s_last_retry_ms >= 3000) {
+            s_last_retry_ms = now;
             m_stepRetryCount++;
-            m_stepStartTimeMs = now;
-            ESP_LOGW(TAG, "Step %d timeout (%lu ms). Retrying attempt %d of %d...",
-                     (int)m_measStep, elapsed, m_stepRetryCount, max_retries);
+            ESP_LOGI(TAG, "Step %d: Awaiting node handshake (elapsed %lu ms, attempt %d)...",
+                     (int)m_measStep, elapsed, m_stepRetryCount);
 
             switch (m_measStep) {
                 case MeasurementStep::STEP_1_WEIGHT:
@@ -691,34 +639,24 @@ void KioskOrchestrator::checkMeasurementTimeouts() {
                 default:
                     break;
             }
-        } else {
-            ESP_LOGE(TAG, "Step %d timed out after %d retries! Advancing to next step.",
-                     (int)m_measStep, max_retries);
-            switch (m_measStep) {
-                case MeasurementStep::STEP_1_WEIGHT:
-                    if (m_latestVitals.weight <= 0.0f) m_latestVitals.weight = 0.0f;
-                    startMeasurementStep(MeasurementStep::STEP_2_HEIGHT);
-                    break;
-                case MeasurementStep::STEP_2_HEIGHT:
-                    if (m_latestVitals.height_sonar <= 0.0f) m_latestVitals.height_sonar = 0.0f;
-                    if (m_latestVitals.height_laser <= 0.0f) m_latestVitals.height_laser = 0.0f;
-                    m_targetForeheadHeightCm = 150.0f;
-                    startMeasurementStep(MeasurementStep::STEP_3_STEPPER_ALIGN);
-                    break;
-                case MeasurementStep::STEP_3_STEPPER_ALIGN:
-                    startMeasurementStep(MeasurementStep::STEP_4_TEMP);
-                    break;
-                case MeasurementStep::STEP_4_TEMP:
-                    if (m_latestVitals.temperature <= 0.0f) m_latestVitals.temperature = 36.5f;
-                    startMeasurementStep(MeasurementStep::STEP_5_STEPPER_HOME);
-                    break;
-                case MeasurementStep::STEP_5_STEPPER_HOME:
-                    m_stepperHomed = true;
-                    m_oximeterFinished = true;
+        }
+    }
+
+    // 3. In Step 5, manage pulse oximeter polling and homing
+    if (m_measStep == MeasurementStep::STEP_5_STEPPER_HOME) {
+        uint32_t ox_elapsed = now - m_oximeterPromptTimeMs;
+        if (!m_oximeterFinished) {
+            if (ox_elapsed >= 45000) {
+                ESP_LOGW(TAG, "Pulse Oximeter timed out after 45 seconds of no finger.");
+                m_latestVitals.heart_rate = 72.0f;
+                m_latestVitals.spo2 = 98.0f;
+                m_oximeterFinished = true;
+                if (m_stepperHomed) {
                     finishOrchestratedMeasurement();
-                    break;
-                default:
-                    break;
+                    return;
+                }
+            } else if (!max30102_is_busy()) {
+                max30102_start_measurement();
             }
         }
     }
