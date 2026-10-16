@@ -74,7 +74,9 @@ static void parse_json_line(const char *json_str) {
         ui_boot_update_status(p, t, c, w, cl, s);
         if (p >= 100) {
             vTaskDelay(pdMS_TO_TICKS(300));
-            ui_show_screen(UI_SCREEN_IDLE);
+            if (ui_get_current_screen() == UI_SCREEN_BOOT) {
+                ui_show_screen(UI_SCREEN_IDLE);
+            }
             display_comm_send_cmd("{\"type\":\"ACK\",\"received\":\"BOOT_PROGRESS\",\"status\":\"IDLE_ACTIVE\"}");
         }
     } else if (strcmp(type, "SYSTEM_STATUS") == 0 || strcmp(type, "BOOT_COMPLETE") == 0) {
@@ -82,9 +84,11 @@ static void parse_json_line(const char *json_str) {
         cJSON *fb = cJSON_GetObjectItem(root, "firebase_connected");
         bool wifi_ok = cJSON_IsTrue(wifi);
         bool fb_ok = cJSON_IsTrue(fb);
-        ui_boot_update_status(100, "All Subsystems Connected", 2, wifi_ok ? 2 : 1, fb_ok ? 2 : 1, 2);
-        vTaskDelay(pdMS_TO_TICKS(300));
-        ui_show_screen(UI_SCREEN_IDLE);
+        if (ui_get_current_screen() == UI_SCREEN_BOOT) {
+            ui_boot_update_status(100, "All Subsystems Connected", 2, wifi_ok ? 2 : 0, fb_ok ? 2 : 0, 2);
+            vTaskDelay(pdMS_TO_TICKS(300));
+            ui_show_screen(UI_SCREEN_IDLE);
+        }
         display_comm_send_cmd("{\"type\":\"ACK\",\"received\":\"SYSTEM_STATUS\",\"status\":\"IDLE_ACTIVE\"}");
     } else if (strcmp(type, "USER_DATA") == 0) {
         cJSON *name = cJSON_GetObjectItem(root, "user_name");

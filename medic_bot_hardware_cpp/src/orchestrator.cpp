@@ -666,8 +666,8 @@ void KioskOrchestrator::processEvent(const sys_event_t &evt) {
             char ip_buf[16] = "0.0.0.0";
             bool wifi_ok = getWifi().isConnected();
             if (wifi_ok) getWifi().getIp(ip_buf, sizeof(ip_buf));
-            bool fb_ok = getCloudSync().isReady();
-            getDisplay().sendBootProgress(100, "All Subsystems Connected & Ready", 2, wifi_ok ? 2 : 1, fb_ok ? 2 : 1, 2);
+            bool fb_ok = getCloudSync().isFirebaseConnected();
+            getDisplay().sendBootProgress(100, "All Subsystems Connected & Ready", 2, wifi_ok ? 2 : 0, fb_ok ? 2 : 0, 2);
             getDisplay().sendStatus("Ready", wifi_ok, ip_buf, fb_ok);
             m_state = OrchestratorState::STANDBY;
             break;
@@ -1022,8 +1022,8 @@ void KioskOrchestrator::processEvent(const sys_event_t &evt) {
         case EVT_WIFI_CONNECTED: {
             char ip[16] = {0};
             getWifi().getIp(ip, sizeof(ip));
-            getDisplay().sendStatus("WiFi Connected", true, ip, getCloudSync().isConfigured());
-            getCloudSync().testConnection();
+            bool fb_ok = getCloudSync().testConnection();
+            getDisplay().sendStatus("WiFi Connected", true, ip, fb_ok);
             break;
         }
 

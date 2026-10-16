@@ -19,11 +19,13 @@ public:
     esp_err_t queueUpdateFp(const char *rfid, uint8_t fp_id);
     bool isReady() const { return m_ready; }
     bool isConfigured() const;
-    void testConnection();
+    bool isFirebaseConnected() const { return m_firebase_connected; }
+    bool testConnection();
     const char *getFirebaseHost() const;
 
 private:
     bool m_ready;
+    bool m_firebase_connected;
     static void workerTaskTrampoline(void *arg);
     void workerTask();
 };

@@ -43,31 +43,67 @@ extern "C" void app_main(void) {
 
     // 3. Initialize Sunton Display UART communication
     medicbot::getDisplay().begin(PIN_DISPLAY_TX, PIN_DISPLAY_RX, DISPLAY_BAUDRATE);
-    medicbot::getDisplay().sendBootProgress(20, "Dual-Core ESP32-S3 Initialized", 2, 0, 0, 0);
+    medicbot::getDisplay().sendBootProgress(15, "Dual-Core ESP32-S3 Initialized", 2, 0, 0, 0);
 
     // 4. Initialize SD Card and SQLite storage
     medicbot::getStorage().begin();
-    medicbot::getDisplay().sendBootProgress(40, "SD Card & SQLite Database Ready", 2, 0, 0, 0);
+    bool storage_ok = medicbot::getStorage().isHealthy();
+    medicbot::getDisplay().sendBootProgress(35, storage_ok ? "SD Card & SQLite Database Ready" : "Local Storage Warning (Using Flash)", 2, 0, 0, 0);
 
-    // 5. Initialize Wi-Fi station and ESP-NOW mesh
-    medicbot::getWifi().begin();
-    medicbot::getEspNow().begin();
-    medicbot::getDisplay().sendBootProgress(65, "Connecting Wi-Fi & ESP-NOW Mesh...", 2, 1, 0, 0);
-
-    // 6. Initialize AS608 Fingerprint & MFRC522 RFID
+    // 5. Initialize AS608 Fingerprint, MFRC522 RFID, MAX30102 Oximeter & ESP-NOW mesh
     medicbot::getFingerprintSensor().begin(PIN_FP_TX, PIN_FP_RX, FP_BAUDRATE);
     mfrc522_init();
-
-    // 7. Initialize MAX30102 Pulse Oximeter
     max30102_init();
-    medicbot::getDisplay().sendBootProgress(85, "Biometric & Medical Sensors Ready", 2, 1, 0, 2);
+    medicbot::getEspNow().begin();
+    medicbot::getDisplay().sendBootProgress(55, "Hardware Sensors & ESP-NOW Ready", 2, 0, 0, 2);
 
-    // 8. Initialize Cloud Sync
+    // 6. Initialize Wi-Fi station and wait for IP assignment
+    medicbot::getWifi().begin();
+    bool wifi_connected = false;
+    int wifi_wait_half_sec = 0;
+    const int max_wifi_wait_half_sec = 24; // 12 seconds max timeout
+
+    while (wifi_wait_half_sec < max_wifi_wait_half_sec) {
+        if (medicbot::getWifi().isConnected()) {
+            wifi_connected = true;
+            break;
+        }
+        vTaskDelay(pdMS_TO_TICKS(500));
+        wifi_wait_half_sec++;
+        char progress_msg[64];
+        snprintf(progress_msg, sizeof(progress_msg), "Connecting to Wi-Fi (%d/%ds)...", (wifi_wait_half_sec + 1) / 2, max_wifi_wait_half_sec / 2);
+        int pct = 55 + (wifi_wait_half_sec * 25 / max_wifi_wait_half_sec);
+        medicbot::getDisplay().sendBootProgress(pct, progress_msg, 2, 1, 0, 2);
+    }
+
+    // 7. Initialize Cloud Sync and test Firebase Realtime Database
     medicbot::getCloudSync().begin();
+    bool fb_connected = false;
 
-    bool wifi_ok = medicbot::getWifi().isConnected();
-    bool fb_ok = medicbot::getCloudSync().isReady();
-    medicbot::getDisplay().sendBootProgress(100, "All Subsystems Connected & Ready", 2, wifi_ok ? 2 : 1, fb_ok ? 2 : 1, 2);
+    if (wifi_connected) {
+        char ip_buf[16] = {0};
+        medicbot::getWifi().getIp(ip_buf, sizeof(ip_buf));
+        ESP_LOGI(TAG, "Wi-Fi Connected! IP: %s", ip_buf);
+        medicbot::getDisplay().sendBootProgress(85, "Verifying Firebase Cloud Database...", 2, 2, 1, 2);
+        fb_connected = medicbot::getCloudSync().testConnection();
+        if (fb_connected) {
+            medicbot::getDisplay().sendBootProgress(95, "Cloud Database Verified Online", 2, 2, 2, 2);
+        } else {
+            medicbot::getDisplay().sendBootProgress(95, "Cloud Database Unreachable (Local Mode)", 2, 2, 0, 2);
+        }
+    } else {
+        ESP_LOGW(TAG, "Wi-Fi connection timed out. Booting in Local Storage / Offline Mode.");
+        medicbot::getDisplay().sendBootProgress(95, "Wi-Fi Offline (Local Storage Mode)", 2, 0, 0, 2);
+    }
+
+    // 8. Final 100% Boot Progress & Status
+    vTaskDelay(pdMS_TO_TICKS(500));
+    char ip_buf[16] = "0.0.0.0";
+    if (wifi_connected) {
+        medicbot::getWifi().getIp(ip_buf, sizeof(ip_buf));
+    }
+    medicbot::getDisplay().sendBootProgress(100, "All Subsystems Verified & Ready", 2, wifi_connected ? 2 : 0, fb_connected ? 2 : 0, 2);
+    medicbot::getDisplay().sendStatus("Ready", wifi_connected, ip_buf, fb_connected);
 
     // 9. Launch Kiosk Orchestrator
     medicbot::getOrchestrator().begin();

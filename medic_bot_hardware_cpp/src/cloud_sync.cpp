@@ -197,7 +197,7 @@ static bool fetch_user_from_firebase(const char *rfid, user_profile_t *out_user)
 }
 
 CloudSync::CloudSync()
-    : m_ready(false) {}
+    : m_ready(false), m_firebase_connected(false) {}
 
 CloudSync::~CloudSync() {}
 
@@ -369,10 +369,11 @@ const char *CloudSync::getFirebaseHost() const {
     return s_firebase_host;
 }
 
-void CloudSync::testConnection() {
+bool CloudSync::testConnection() {
     if (!getWifi().isConnected() || strlen(s_firebase_host) == 0) {
         ESP_LOGW(TAG, "Cannot test Firebase connection: Wi-Fi disconnected or Firebase URL not configured");
-        return;
+        m_firebase_connected = false;
+        return false;
     }
 
     char url[256];
@@ -382,7 +383,7 @@ void CloudSync::testConnection() {
     esp_http_client_config_t config = {
         .url = url,
         .method = HTTP_METHOD_GET,
-        .timeout_ms = 15000,
+        .timeout_ms = 8000,
         .event_handler = http_event_handler,
         .crt_bundle_attach = esp_crt_bundle_attach,
     };
@@ -391,11 +392,13 @@ void CloudSync::testConnection() {
     int status_code = esp_http_client_get_status_code(client);
     esp_http_client_cleanup(client);
 
-    if (err == ESP_OK && (status_code >= 200 && status_code < 300)) {
+    m_firebase_connected = (err == ESP_OK && (status_code >= 200 && status_code < 300));
+    if (m_firebase_connected) {
         ESP_LOGI(TAG, ">>> SUCCESS: Firebase Realtime Database connection verified (HTTP %d)! <<<", status_code);
     } else {
         ESP_LOGW(TAG, "Firebase connection test returned status %d (err: %s)", status_code, esp_err_to_name(err));
     }
+    return m_firebase_connected;
 }
 
 esp_err_t CloudSync::queueReading(const vital_readings_t *reading) {

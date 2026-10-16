@@ -413,6 +413,9 @@ void ui_boot_update_status(int percent, const char *task_text, int core_ok, int 
         } else if (states[i] == 1) {
             lv_label_set_text(s_boot_pills[i], text_running[i]);
             lv_obj_set_style_text_color(s_boot_pills[i], lv_color_hex(0xf59e0b), 0); // Amber Yellow
+        } else if (states[i] == 3 || (percent >= 100 && states[i] == 0)) {
+            lv_label_set_text(s_boot_pills[i], "OFFLINE");
+            lv_obj_set_style_text_color(s_boot_pills[i], lv_color_hex(0xef4444), 0); // Red
         } else {
             lv_label_set_text(s_boot_pills[i], "PENDING");
             lv_obj_set_style_text_color(s_boot_pills[i], lv_color_hex(0x94a3b8), 0); // Slate Gray
