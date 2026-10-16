@@ -70,15 +70,20 @@ esp_err_t max30105_init(max30105_t *sensor, i2c_bus_handle_t i2c_bus, uint8_t i2
     // Verify part ID
     uint8_t part_id = 0;
     esp_err_t ret = max30105_read_part_id(sensor, &part_id);
-    if (ret != ESP_OK || (part_id != MAX30105_EXPECTEDPARTID && part_id != 0x11 && part_id != 0x01)) {
+    if (ret != ESP_OK || (part_id != MAX30105_EXPECTEDPARTID && part_id != 0x11 && part_id != 0x01 && part_id != 0x03)) {
         ESP_LOGE(TAG, "Failed to verify part ID: 0x%02x (err: %s)", part_id, esp_err_to_name(ret));
+        i2c_bus_device_delete(&sensor->i2c_device);
+        sensor->i2c_device = NULL;
         return ESP_ERR_NOT_FOUND;
     }
+    ESP_LOGI(TAG, "MAX3010x verified with Part ID: 0x%02x", part_id);
 
     // Read revision ID
     ret = max30105_read_revision_id(sensor, &sensor->revision_id);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to read revision ID");
+        i2c_bus_device_delete(&sensor->i2c_device);
+        sensor->i2c_device = NULL;
         return ret;
     }
 

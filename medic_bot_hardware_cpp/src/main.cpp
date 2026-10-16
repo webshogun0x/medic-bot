@@ -45,20 +45,22 @@ extern "C" void app_main(void) {
     medicbot::getDisplay().begin(PIN_DISPLAY_TX, PIN_DISPLAY_RX, DISPLAY_BAUDRATE);
     medicbot::getDisplay().sendBootProgress(15, "Dual-Core ESP32-S3 Initialized", 2, 0, 0, 0);
 
-    // 4. Initialize SD Card and SQLite storage
+    // 4. Initialize Wi-Fi station and ESP-NOW mesh early (connect in background)
+    medicbot::getWifi().begin();
+    medicbot::getEspNow().begin();
+
+    // 5. Initialize SD Card and SQLite storage
     medicbot::getStorage().begin();
     bool storage_ok = medicbot::getStorage().isHealthy();
-    medicbot::getDisplay().sendBootProgress(35, storage_ok ? "SD Card & SQLite Database Ready" : "Local Storage Warning (Using Flash)", 2, 0, 0, 0);
+    medicbot::getDisplay().sendBootProgress(35, storage_ok ? "SD Card & SQLite Database Ready" : "Local Storage Warning (Using Flash)", 2, 1, 0, 0);
 
-    // 5. Initialize AS608 Fingerprint, MFRC522 RFID, MAX30102 Oximeter & ESP-NOW mesh
+    // 6. Initialize AS608 Fingerprint, MFRC522 RFID, and MAX30102 Oximeter
     medicbot::getFingerprintSensor().begin(PIN_FP_TX, PIN_FP_RX, FP_BAUDRATE);
     mfrc522_init();
     max30102_init();
-    medicbot::getEspNow().begin();
-    medicbot::getDisplay().sendBootProgress(55, "Hardware Sensors & ESP-NOW Ready", 2, 0, 0, 2);
+    medicbot::getDisplay().sendBootProgress(60, "Hardware Sensors & ESP-NOW Ready", 2, 1, 0, 2);
 
-    // 6. Initialize Wi-Fi station and wait for IP assignment
-    medicbot::getWifi().begin();
+    // 7. Verify Wi-Fi station IP assignment (polling loop)
     bool wifi_connected = false;
     int wifi_wait_half_sec = 0;
     const int max_wifi_wait_half_sec = 24; // 12 seconds max timeout
@@ -72,7 +74,7 @@ extern "C" void app_main(void) {
         wifi_wait_half_sec++;
         char progress_msg[64];
         snprintf(progress_msg, sizeof(progress_msg), "Connecting to Wi-Fi (%d/%ds)...", (wifi_wait_half_sec + 1) / 2, max_wifi_wait_half_sec / 2);
-        int pct = 55 + (wifi_wait_half_sec * 25 / max_wifi_wait_half_sec);
+        int pct = 60 + (wifi_wait_half_sec * 20 / max_wifi_wait_half_sec);
         medicbot::getDisplay().sendBootProgress(pct, progress_msg, 2, 1, 0, 2);
     }
 

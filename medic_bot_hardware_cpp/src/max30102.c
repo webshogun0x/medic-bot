@@ -123,18 +123,8 @@ esp_err_t max30102_init(void) {
         gpio_num_t scl;
         const char *desc;
     } candidates[] = {
-        { GPIO_NUM_8,  GPIO_NUM_9,  "Default Config (SDA=8, SCL=9)" },
-        { GPIO_NUM_9,  GPIO_NUM_8,  "Reversed Default (SDA=9, SCL=8)" },
-        { GPIO_NUM_4,  GPIO_NUM_5,  "Alternate (SDA=4, SCL=5)" },
-        { GPIO_NUM_5,  GPIO_NUM_4,  "Alternate (SDA=5, SCL=4)" },
-        { GPIO_NUM_1,  GPIO_NUM_2,  "Alternate (SDA=1, SCL=2)" },
-        { GPIO_NUM_2,  GPIO_NUM_1,  "Alternate (SDA=2, SCL=1)" },
-        { GPIO_NUM_38, GPIO_NUM_39, "Alternate (SDA=38, SCL=39)" },
-        { GPIO_NUM_39, GPIO_NUM_38, "Alternate (SDA=39, SCL=38)" },
-        { GPIO_NUM_40, GPIO_NUM_41, "Alternate (SDA=40, SCL=41)" },
-        { GPIO_NUM_41, GPIO_NUM_40, "Alternate (SDA=41, SCL=40)" },
+        { PIN_I2C_SDA, PIN_I2C_SCL, "Configured Default (SDA=8, SCL=9)" },
         { GPIO_NUM_43, GPIO_NUM_44, "Alternate (SDA=43, SCL=44)" },
-        { GPIO_NUM_44, GPIO_NUM_43, "Alternate (SDA=44, SCL=43)" },
     };
 
     for (size_t i = 0; i < sizeof(candidates) / sizeof(candidates[0]); i++) {
