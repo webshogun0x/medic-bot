@@ -320,7 +320,13 @@ esp_err_t StorageManager::begin() {
     ESP_LOGI(TAG, "Mounting SD Card on SPI3 (CS:%d, MOSI:%d, SCK:%d, MISO:%d)...",
              PIN_SD_CS, PIN_SD_MOSI, PIN_SD_SCK, PIN_SD_MISO);
 
+    // 1. Hardware stabilization delay for SD card controller power-on
+    vTaskDelay(pdMS_TO_TICKS(150));
+
+    // 2. Enable internal pull-ups on all SPI lines for signal integrity
     gpio_set_pull_mode(PIN_SD_MISO, GPIO_PULLUP_ONLY);
+    gpio_set_pull_mode(PIN_SD_MOSI, GPIO_PULLUP_ONLY);
+    gpio_set_pull_mode(PIN_SD_SCK, GPIO_PULLUP_ONLY);
     gpio_set_pull_mode(PIN_SD_CS, GPIO_PULLUP_ONLY);
 
     spi_bus_config_t bus_cfg = {};
@@ -335,21 +341,26 @@ esp_err_t StorageManager::begin() {
     sdmmc_card_t *card = nullptr;
 
     if (ret == ESP_OK || ret == ESP_ERR_INVALID_STATE) {
-        sdmmc_host_t host = SDSPI_HOST_DEFAULT();
-        host.slot = SD_SPI_HOST;
-        host.max_freq_khz = SDMMC_FREQ_DEFAULT;
-
-        sdspi_device_config_t dev_cfg = SDSPI_DEVICE_CONFIG_DEFAULT();
-        dev_cfg.gpio_cs = PIN_SD_CS;
-        dev_cfg.host_id = SD_SPI_HOST;
+        // Multi-frequency attempts: 10 MHz -> 4 MHz -> 400 kHz (safe probing speed)
+        const int freqs_khz[] = { 10000, 4000, SDMMC_FREQ_PROBING };
 
         for (int attempt = 1; attempt <= 3; attempt++) {
+            sdmmc_host_t host = SDSPI_HOST_DEFAULT();
+            host.slot = SD_SPI_HOST;
+            host.max_freq_khz = freqs_khz[attempt - 1];
+
+            sdspi_device_config_t dev_cfg = SDSPI_DEVICE_CONFIG_DEFAULT();
+            dev_cfg.gpio_cs = PIN_SD_CS;
+            dev_cfg.host_id = SD_SPI_HOST;
+
+            ESP_LOGI(TAG, "SD mount attempt %d at %d kHz...", attempt, host.max_freq_khz);
             ret = esp_vfs_fat_sdspi_mount(SD_MOUNT_POINT, &host, &dev_cfg, &mount_config, &card);
             if (ret == ESP_OK) {
-                ESP_LOGI(TAG, ">>> SUCCESS: SD Card mounted on attempt %d! <<<", attempt);
+                ESP_LOGI(TAG, ">>> SUCCESS: SD Card mounted on attempt %d (%d kHz)! <<<", attempt, host.max_freq_khz);
                 break;
             }
-            ESP_LOGW(TAG, "SD mount attempt %d failed: %s, retrying...", attempt, esp_err_to_name(ret));
+            ESP_LOGW(TAG, "SD mount attempt %d (%d kHz) failed: %s, retrying...",
+                     attempt, host.max_freq_khz, esp_err_to_name(ret));
             vTaskDelay(pdMS_TO_TICKS(200));
         }
     }

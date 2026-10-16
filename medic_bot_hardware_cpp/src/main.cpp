@@ -45,14 +45,14 @@ extern "C" void app_main(void) {
     medicbot::getDisplay().begin(PIN_DISPLAY_TX, PIN_DISPLAY_RX, DISPLAY_BAUDRATE);
     medicbot::getDisplay().sendBootProgress(15, "Dual-Core ESP32-S3 Initialized", 2, 0, 0, 0);
 
-    // 4. Initialize Wi-Fi station and ESP-NOW mesh early (connect in background)
-    medicbot::getWifi().begin();
-    medicbot::getEspNow().begin();
-
-    // 5. Initialize SD Card and SQLite storage
+    // 4. Initialize SD Card and SQLite storage FIRST (mounts /sdcard/wifi.txt)
     medicbot::getStorage().begin();
     bool storage_ok = medicbot::getStorage().isHealthy();
-    medicbot::getDisplay().sendBootProgress(35, storage_ok ? "SD Card & SQLite Database Ready" : "Local Storage Warning (Using Flash)", 2, 1, 0, 0);
+    medicbot::getDisplay().sendBootProgress(35, storage_ok ? "SD Card & SQLite Database Ready" : "Local Storage Warning (Using Flash)", 2, 0, 0, 0);
+
+    // 5. Initialize Wi-Fi station (reads /sdcard/wifi.txt) & ESP-NOW mesh
+    medicbot::getWifi().begin();
+    medicbot::getEspNow().begin();
 
     // 6. Initialize AS608 Fingerprint, MFRC522 RFID, and MAX30102 Oximeter
     medicbot::getFingerprintSensor().begin(PIN_FP_TX, PIN_FP_RX, FP_BAUDRATE);
